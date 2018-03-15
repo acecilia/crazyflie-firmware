@@ -60,7 +60,7 @@ typedef enum uwbEvent_e {
 
 typedef uint64_t locoAddress_t;
 
-#define LPS_NUMBER_OF_ALGORITHM 2
+#define LPS_NUMBER_OF_ALGORITHM 3
 
 #define LPS_AUTO_MODE_SWITCH_PERIOD M2T(1000)
 
@@ -68,6 +68,7 @@ typedef enum {
   lpsMode_auto = 0,
   lpsMode_TWR = 1,
   lpsMode_TDoA = 2,
+  lpsMode_TWR_swarm = 3,
 } lpsMode_t;
 
 typedef struct {

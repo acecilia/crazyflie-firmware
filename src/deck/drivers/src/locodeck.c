@@ -56,6 +56,7 @@
 
 #include "lpsTdoaTag.h"
 #include "lpsTwrTag.h"
+#include "lpsTwrSwarmTag.h"
 
 
 #define CS_PIN DECK_GPIO_IO1
@@ -110,7 +111,7 @@ static lpsAlgoOptions_t algoOptions = {
 
   .combinedAnchorPositionOk = false,
 
-#ifdef LPS_TDMA_ENABLE
+#if LPS_TDMA_ENABLE
   .useTdma = true,
   .tdmaSlot = TDMA_SLOT,
 #endif
@@ -118,8 +119,10 @@ static lpsAlgoOptions_t algoOptions = {
   // .rangingMode is the wanted algorithm, available as a parameter
 #if LPS_TDOA_ENABLE
   .rangingMode = lpsMode_TDoA,
-#elif defined(LPS_TWR_ENABLE)
+#elif LPS_TWR_ENABLE
   .rangingMode = lpsMode_TWR,
+#elif LPS_TWR_SWARM_ENABLE
+  .rangingMode = lpsMode_TWR_swarm,
 #else
   .rangingMode = lpsMode_auto,
 #endif
@@ -148,6 +151,7 @@ struct {
 } algorithmsList[LPS_NUMBER_OF_ALGORITHM+1] = {
   [lpsMode_TWR] = {.algorithm = &uwbTwrTagAlgorithm, .name="TWR"},
   [lpsMode_TDoA] = {.algorithm = &uwbTdoaTagAlgorithm, .name="TDoA"},
+  [lpsMode_TWR_swarm] = {.algorithm = &uwbTwrSwarmTagAlgorithm, .name="TWRSwarm"},
 };
 
 point_t* locodeckGetAnchorPosition(uint8_t anchor)
@@ -155,11 +159,7 @@ point_t* locodeckGetAnchorPosition(uint8_t anchor)
   return &algoOptions.anchorPosition[anchor];
 }
 
-#if LPS_TDOA_ENABLE
-static uwbAlgorithm_t *algorithm = &uwbTdoaTagAlgorithm;
-#else
-static uwbAlgorithm_t *algorithm = &uwbTwrTagAlgorithm;
-#endif
+static uwbAlgorithm_t *algorithm;
 
 static bool isInit = false;
 static SemaphoreHandle_t irqSemaphore;
