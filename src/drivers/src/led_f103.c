@@ -102,6 +102,7 @@ void ledSetAll(void)
     ledSet(i, 1);
   }
 }
+
 void ledSet(led_t led, bool value)
 {
   if (led>LED_NUM)
@@ -116,4 +117,10 @@ void ledSet(led_t led, bool value)
     GPIO_ResetBits(led_port[led], led_pin[led]); 
 }
 
+void ledToggle(led_t led)
+{
+  if (led>LED_NUM)
+  return;
 
+  GPIO_ToggleBits(led_port[led], led_pin[led]);
+}
