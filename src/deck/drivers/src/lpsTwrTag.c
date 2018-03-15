@@ -41,14 +41,13 @@
 #include "estimator_kalman.h"
 #include "arm_math.h"
 
-// Additions
-#include "led.h"
-#include "timers.h"
-#include "debug.h"
-
 // Outlier rejection
 #define RANGING_HISTORY_LENGTH 32
 #define OUTLIER_TH 4
+static struct {
+  float32_t history[RANGING_HISTORY_LENGTH];
+  size_t ptr;
+} rangingStats[LOCODECK_NR_OF_ANCHORS];
 
 // Rangin statistics
 static uint8_t rangingPerSec[LOCODECK_NR_OF_ANCHORS];
@@ -78,73 +77,207 @@ static lpsAlgoOptions_t* options;
 
 // TDMA handling
 static bool tdmaSynchronized;
+static dwTime_t frameStart;
 
 static bool rangingOk;
 
-// Additions
-static int blinkCounter = 0;
-static int rxPackagesCounter = 0;
-static int lostPackagesCounter = 0;
+static void txcallback(dwDevice_t *dev)
+{
+  dwTime_t departure;
+  dwGetTransmitTimestamp(dev, &departure);
+  departure.full += (options->antennaDelay / 2);
 
-static void blink(led_t led) {
-  blinkCounter++;
-
-  if (blinkCounter == 1000) {
-    blinkCounter = 0;
-    ledToggle(led);
+  switch (txPacket.payload[0]) {
+    case LPS_TWR_POLL:
+      poll_tx = departure;
+      break;
+    case LPS_TWR_FINAL:
+      final_tx = departure;
+      break;
   }
 }
 
-static xTimerHandle timer;
-static void timerCallback(xTimerHandle timer) {
-  DEBUG_PRINT("Received packages: %d | Lost packages: %d\n", rxPackagesCounter, lostPackagesCounter);
-  rxPackagesCounter = 0;
-  lostPackagesCounter = 0;
-}
-
-static void txcallback(dwDevice_t *dev) { }
 
 static uint32_t rxcallback(dwDevice_t *dev) {
-  blink(LED_RED_L);
-  rxPackagesCounter++;
+  dwTime_t arival = { .full=0 };
+  int dataLength = dwGetDataLength(dev);
 
-  txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
-  txPacket.payload[LPS_TWR_SEQ] = ++curr_seq;
-  txPacket.sourceAddress = options->tagAddress;
-  txPacket.destAddress = options->anchorAddress[current_anchor];
+  if (dataLength == 0) return 0;
 
-  dwNewTransmit(dev);
-  dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+  packet_t rxPacket;
+  memset(&rxPacket, 0, MAC802154_HEADER_LENGTH);
 
-  dwWaitForResponse(dev, true);
-  dwStartTransmit(dev);
+  dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
+
+  if (rxPacket.destAddress != options->tagAddress) {
+    dwNewReceive(dev);
+    dwSetDefaults(dev);
+    dwStartReceive(dev);
+    return MAX_TIMEOUT;
+  }
+
+  txPacket.destAddress = rxPacket.sourceAddress;
+  txPacket.sourceAddress = rxPacket.destAddress;
+
+  switch(rxPacket.payload[LPS_TWR_TYPE]) {
+    // Tag received messages
+    case LPS_TWR_ANSWER:
+      if (rxPacket.payload[LPS_TWR_SEQ] != curr_seq) {
+        return 0;
+      }
+
+      if (dataLength - MAC802154_HEADER_LENGTH > 3) {
+        if (rxPacket.payload[LPS_TWR_LPP_HEADER] == LPP_HEADER_SHORT_PACKET) {
+          int srcId = -1;
+
+          for (int i=0; i<LOCODECK_NR_OF_ANCHORS; i++) {
+            if (rxPacket.sourceAddress == options->anchorAddress[i]) {
+              srcId = i;
+              break;
+            }
+          }
+
+          if (srcId >= 0) {
+            lpsHandleLppShortPacket(srcId, &rxPacket.payload[LPS_TWR_LPP_TYPE],
+                                    dataLength - MAC802154_HEADER_LENGTH - 3);
+          }
+        }
+      }
+
+      txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_FINAL;
+      txPacket.payload[LPS_TWR_SEQ] = rxPacket.payload[LPS_TWR_SEQ];
+
+      dwGetReceiveTimestamp(dev, &arival);
+      arival.full -= (options->antennaDelay / 2);
+      answer_rx = arival;
+
+      dwNewTransmit(dev);
+      dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+
+      dwWaitForResponse(dev, true);
+      dwStartTransmit(dev);
+
+      break;
+    case LPS_TWR_REPORT:
+    {
+      lpsTwrTagReportPayload_t *report = (lpsTwrTagReportPayload_t *)(rxPacket.payload+2);
+      double tround1, treply1, treply2, tround2, tprop_ctn, tprop;
+
+      if (rxPacket.payload[LPS_TWR_SEQ] != curr_seq) {
+        return 0;
+      }
+
+      memcpy(&poll_rx, &report->pollRx, 5);
+      memcpy(&answer_tx, &report->answerTx, 5);
+      memcpy(&final_rx, &report->finalRx, 5);
+
+      tround1 = answer_rx.low32 - poll_tx.low32;
+      treply1 = answer_tx.low32 - poll_rx.low32;
+      tround2 = final_rx.low32 - answer_tx.low32;
+      treply2 = final_tx.low32 - answer_rx.low32;
+
+      tprop_ctn = ((tround1*tround2) - (treply1*treply2)) / (tround1 + tround2 + treply1 + treply2);
+
+      tprop = tprop_ctn / LOCODECK_TS_FREQ;
+      options->distance[current_anchor] = SPEED_OF_LIGHT * tprop;
+      options->pressures[current_anchor] = report->asl;
+
+      // Outliers rejection
+      rangingStats[current_anchor].ptr = (rangingStats[current_anchor].ptr + 1) % RANGING_HISTORY_LENGTH;
+      float32_t mean;
+      float32_t stddev;
+
+      arm_std_f32(rangingStats[current_anchor].history, RANGING_HISTORY_LENGTH, &stddev);
+      arm_mean_f32(rangingStats[current_anchor].history, RANGING_HISTORY_LENGTH, &mean);
+      float32_t diff = fabsf(mean - options->distance[current_anchor]);
+
+      rangingStats[current_anchor].history[rangingStats[current_anchor].ptr] = options->distance[current_anchor];
+
+      rangingOk = true;
+
+      if ((options->combinedAnchorPositionOk || options->anchorPosition[current_anchor].timestamp) &&
+          (diff < (OUTLIER_TH*stddev))) {
+        distanceMeasurement_t dist;
+        dist.distance = options->distance[current_anchor];
+        dist.x = options->anchorPosition[current_anchor].x;
+        dist.y = options->anchorPosition[current_anchor].y;
+        dist.z = options->anchorPosition[current_anchor].z;
+        dist.stdDev = 0.25;
+        estimatorKalmanEnqueueDistance(&dist);
+      }
+
+      if (options->useTdma && current_anchor == 0) {
+        // Final packet is sent by us and received by the anchor
+        // We use it as synchonisation time for TDMA
+        dwTime_t offset = { .full =final_tx.full - final_rx.full };
+        frameStart.full = TDMA_LAST_FRAME(final_rx.full) + offset.full;
+        tdmaSynchronized = true;
+      }
+
+      ranging_complete = true;
+
+      return 0;
+      break;
+    }
+  }
   return MAX_TIMEOUT;
+}
+
+/* Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0 */
+static uint32_t adjustTxRxTime(dwTime_t *time)
+{
+  uint32_t added = (1<<9) - (time->low32 & ((1<<9)-1));
+  time->low32 = (time->low32 & ~((1<<9)-1)) + (1<<9);
+  return added;
+}
+
+/* Calculate the transmit time for a given timeslot in the current frame */
+static dwTime_t transmitTimeForSlot(int slot)
+{
+  dwTime_t transmitTime = { .full = 0 };
+  // Calculate start of the slot
+  transmitTime.full = frameStart.full + slot*TDMA_SLOT_LEN;
+
+  // DW1000 can only schedule time with 9 LSB at 0, adjust for it
+  adjustTxRxTime(&transmitTime);
+  return transmitTime;
 }
 
 static void initiateRanging(dwDevice_t *dev)
 {
-  lostPackagesCounter++;
-  blink(LED_BLUE_L);
+  if (!options->useTdma || tdmaSynchronized) {
+    if (options->useTdma) {
+      // go to next TDMA frame
+      frameStart.full += TDMA_FRAME_LEN;
+    }
 
-  dwNewTransmit(dev);
-  dwWaitForResponse(dev, true);
-  dwStartTransmit(dev);
-  return;
+    current_anchor ++;
+    if (current_anchor >= LOCODECK_NR_OF_ANCHORS) {
+      current_anchor = 0;
+    }
+  } else {
+    current_anchor = 0;
+  }
 
-  /* Previous implementation, to use as a guide
   dwIdle(dev);
 
   txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
   txPacket.payload[LPS_TWR_SEQ] = ++curr_seq;
+
   txPacket.sourceAddress = options->tagAddress;
   txPacket.destAddress = options->anchorAddress[current_anchor];
 
   dwNewTransmit(dev);
   dwSetDefaults(dev);
   dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
+
+  if (options->useTdma && tdmaSynchronized) {
+    dwTime_t txTime = transmitTimeForSlot(options->tdmaSlot);
+    dwSetTxRxTime(dev, txTime);
+  }
+
   dwWaitForResponse(dev, true);
   dwStartTransmit(dev);
-  */
 }
 
 static void sendLppShort(dwDevice_t *dev, lpsLppShortPacket_t *packet)
@@ -244,9 +377,6 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 
 static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 {
-  timer = xTimerCreate("jejeTimer", M2T(5000), pdTRUE, NULL, timerCallback);
-  xTimerStart(timer, 0);
-
   options = algoOptions;
 
   // Initialize the packet in the TX buffer
