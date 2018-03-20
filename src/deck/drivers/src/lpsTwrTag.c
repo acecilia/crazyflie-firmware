@@ -407,7 +407,7 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 
   dwCommitConfiguration(dev);
 
-  rangingOk = false;
+  rangingOk = true; // It was false
 }
 
 static bool isRangingOk()
