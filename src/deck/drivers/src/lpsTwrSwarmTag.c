@@ -43,14 +43,14 @@
 // Additions
 #include "led.h"
 #include "debug.h"
-
+#include "timers.h"
 
 // Rangin statistics
-static uint8_t rangingPerSec = 0;
-static uint8_t rangingSuccessRate = 0;
+static uint16_t rangingPerSec = 0;
+static uint8_t performanceRate = 0;
 // Used to calculate above values
-static uint8_t succededRanging = 0;
-static uint8_t failedRanging = 0;
+static uint16_t succededRangingCounter = 0;
+static uint16_t failedRangingCounter = 0;
 
 /*
 // Timestamps for ranging
@@ -90,12 +90,25 @@ static void blink(led_t led) {
     ledToggle(led);
   }
 }
+static xTimerHandle logTimer;
+static void logTimerCallback(xTimerHandle timer) {
+  rangingPerSec = failedRangingCounter + succededRangingCounter;
+  DEBUG_PRINT("RANGING: %d\n", rangingPerSec);
+  if (rangingPerSec > 0) {
+    performanceRate = 100.0f*(float)succededRangingCounter / (float)rangingPerSec;
+  } else {
+    performanceRate = 0.0f;
+  }
+
+  failedRangingCounter = 0;
+  succededRangingCounter = 0;
+}
 
 static void txcallback(dwDevice_t *dev) { }
 
 static uint32_t rxcallback(dwDevice_t *dev) {
   blink(LED_RED_L);
-  succededRanging++;
+  succededRangingCounter++;
 
   /*
   txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
@@ -156,68 +169,7 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
       return MAX_TIMEOUT;
       break;
     case eventTimeout:  // Comes back to timeout after each ranging attempt
-      /*
-      if (!ranging_complete && !lpp_transaction) {
-        options->rangingState &= ~(1<<current_anchor);
-        if (options->failedRanging[current_anchor] < options->rangingFailedThreshold) {
-          options->failedRanging[current_anchor] ++;
-          options->rangingState |= (1<<current_anchor);
-        }
-
-        locSrvSendRangeFloat(current_anchor, NAN);
-        failedRanging[current_anchor]++;
-      } else {
-        options->rangingState |= (1<<current_anchor);
-        options->failedRanging[current_anchor] = 0;
-
-        locSrvSendRangeFloat(current_anchor, options->distance[current_anchor]);
-        succededRanging[current_anchor]++;
-      }
-
-      // Handle ranging statistic
-      if (xTaskGetTickCount() > (statisticStartTick+1000)) {
-        statisticStartTick = xTaskGetTickCount();
-
-        for (int i=0; i<LOCODECK_NR_OF_ANCHORS; i++) {
-          rangingPerSec[i] = failedRanging[i] + succededRanging[i];
-          if (rangingPerSec[i] > 0) {
-            rangingSuccessRate[i] = 100.0f*(float)succededRanging[i] / (float)rangingPerSec[i];
-          } else {
-            rangingSuccessRate[i] = 0.0f;
-          }
-
-          failedRanging[i] = 0;
-          succededRanging[i] = 0;
-        }
-      }
-
-
-      if (lpsGetLppShort(&lppShortPacket)) {
-        lpp_transaction = true;
-        sendLppShort(dev, &lppShortPacket);
-      } else {
-        lpp_transaction = false;
-        ranging_complete = false;
-        initiateRanging(dev);
-      }
-      */
-
-      failedRanging++;
-
-      if (xTaskGetTickCount() > (statisticStartTick+1000)) {
-        statisticStartTick = xTaskGetTickCount();
-
-        rangingPerSec = failedRanging + succededRanging;
-        if (rangingPerSec > 0) {
-          rangingSuccessRate = 100.0f*(float)succededRanging / (float)rangingPerSec;
-        } else {
-          rangingSuccessRate = 0.0f;
-        }
-
-        failedRanging = 0;
-        succededRanging = 0;
-      }
-
+      failedRangingCounter++;
       initiateRanging(dev); // Added
 
       return MAX_TIMEOUT;
@@ -236,6 +188,10 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 {
   // options = algoOptions;
+
+  // Initialize the logging timer
+  logTimer = xTimerCreate("loggingTimer", M2T(1000), pdTRUE, NULL, logTimerCallback);
+  xTimerStart(logTimer, 0);
 
   // Initialize the packet in the TX buffer
   memset(&txPacket, 0, sizeof(txPacket));
@@ -281,9 +237,7 @@ uwbAlgorithm_t uwbTwrSwarmTagAlgorithm = {
   .isRangingOk = isRangingOk,
 };
 
-/*
 LOG_GROUP_START(twrSwarm)
-LOG_ADD(LOG_UINT8, rangingSuccessRate, &rangingSuccessRate)
-LOG_ADD(LOG_UINT8, rangingPerSec, &rangingPerSec)
+LOG_ADD(LOG_UINT16, rangingPerSec, &rangingPerSec)
+LOG_ADD(LOG_UINT8, performanceRate, &performanceRate)
 LOG_GROUP_STOP(twrSwarm)
-*/
