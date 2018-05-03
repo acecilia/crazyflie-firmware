@@ -93,7 +93,6 @@ static void blink(led_t led) {
 static xTimerHandle logTimer;
 static void logTimerCallback(xTimerHandle timer) {
   rangingPerSec = failedRangingCounter + succededRangingCounter;
-  DEBUG_PRINT("RANGING: %d\n", rangingPerSec);
   if (rangingPerSec > 0) {
     performanceRate = 100.0f*(float)succededRangingCounter / (float)rangingPerSec;
   } else {
@@ -107,9 +106,6 @@ static void logTimerCallback(xTimerHandle timer) {
 static void txcallback(dwDevice_t *dev) { }
 
 static uint32_t rxcallback(dwDevice_t *dev) {
-  blink(LED_RED_L);
-  succededRangingCounter++;
-
   /*
   txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
   txPacket.payload[LPS_TWR_SEQ] = ++curr_seq;
@@ -128,8 +124,6 @@ static uint32_t rxcallback(dwDevice_t *dev) {
 
 static void initiateRanging(dwDevice_t *dev)
 {
-  blink(LED_BLUE_L);
-
   dwNewTransmit(dev);
   dwWaitForResponse(dev, true);
   dwStartTransmit(dev);
@@ -161,6 +155,8 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 
   switch(event) {
     case eventPacketReceived:
+      blink(LED_RED_L);
+      succededRangingCounter++;
       return rxcallback(dev);
       break;
     case eventPacketSent:
@@ -170,6 +166,7 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
       break;
     case eventTimeout:  // Comes back to timeout after each ranging attempt
       failedRangingCounter++;
+      blink(LED_BLUE_L);
       initiateRanging(dev); // Added
 
       return MAX_TIMEOUT;
