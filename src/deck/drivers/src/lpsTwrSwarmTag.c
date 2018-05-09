@@ -40,6 +40,8 @@
 #include "estimator_kalman.h"
 #include "arm_math.h"
 
+#include "hashtable.h"
+
 // Additions
 #include "led.h"
 #include "debug.h"
