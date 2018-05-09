@@ -40,7 +40,7 @@
 #include "estimator_kalman.h"
 #include "arm_math.h"
 
-#include "hashtable.h"
+#include "hashtable2.h"
 
 // Additions
 #include "led.h"
@@ -53,6 +53,10 @@ static uint8_t performanceRate = 0;
 // Used to calculate above values
 static uint16_t succededRangingCounter = 0;
 static uint16_t failedRangingCounter = 0;
+
+#define INDEX 1
+
+static dict *dct = NULL;
 
 /*
 // Timestamps for ranging
@@ -108,6 +112,25 @@ static void logTimerCallback(xTimerHandle timer) {
 static void txcallback(dwDevice_t *dev) { }
 
 static uint32_t rxcallback(dwDevice_t *dev) {
+
+  int8_t key = 1;
+  dict_insert_result result = dict_insert(dct, &key);
+
+  if (result.inserted) {
+    *result.datum_ptr = "valuejeje";
+    DEBUG_PRINT("inserted '%d': '%s'\n", key, (char *)*result.datum_ptr);
+  } else {
+    //DEBUG_PRINT("Didnt work!");
+  }
+
+  int8_t key2 = 1;
+  void** search = dict_search(dct, &key2);
+  if (search) {
+    //DEBUG_PRINT("found '%d': '%s'\n", key2, *(char **)search);
+  } else {
+    //DEBUG_PRINT("'%d' not found!\n", key2);
+  }
+  
   /*
   txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
   txPacket.payload[LPS_TWR_SEQ] = ++curr_seq;
@@ -191,6 +214,9 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
   // Initialize the logging timer
   logTimer = xTimerCreate("loggingTimer", M2T(1000), pdTRUE, NULL, logTimerCallback);
   xTimerStart(logTimer, 0);
+
+  // Initialize the dictionary storing the rangings
+  dct = hashtable2_dict_new((dict_compare_func)strcmp, dict_str_hash, 10);
 
   // Initialize the packet in the TX buffer
   memset(&txPacket, 0, sizeof(txPacket));
