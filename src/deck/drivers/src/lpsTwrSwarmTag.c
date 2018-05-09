@@ -109,6 +109,20 @@ static void logTimerCallback(xTimerHandle timer) {
   succededRangingCounter = 0;
 }
 
+static void sendData(dwDevice_t *dev, void *data, bool waitForResponse) {
+  dwNewTransmit(dev);
+  dwSetDefaults(dev);
+  dwSetData(dev, (uint8_t*)&data, MAC802154_HEADER_LENGTH+2);
+  dwWaitForResponse(dev, waitForResponse);
+  dwStartTransmit(dev);
+}
+
+static void waitForResponse(dwDevice_t *dev) {
+  dwNewReceive(dev);
+  dwSetDefaults(dev);
+  dwStartReceive(dev);
+}
+
 static void txcallback(dwDevice_t *dev) { }
 
 static uint32_t rxcallback(dwDevice_t *dev) {
@@ -117,7 +131,7 @@ static uint32_t rxcallback(dwDevice_t *dev) {
   dict_insert_result result = dict_insert(dct, &key);
 
   if (result.inserted) {
-    *result.datum_ptr = "valuejeje";
+    *result.datum_ptr = "example value";
     DEBUG_PRINT("inserted '%d': '%s'\n", key, (char *)*result.datum_ptr);
   } else {
     //DEBUG_PRINT("Didnt work!");
