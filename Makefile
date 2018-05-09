@@ -85,6 +85,9 @@ ST_OBJ_CF2 += usbd_ioreq.o usbd_req.o usbd_core.o
 # libdw dw1000 driver
 VPATH_CF2 += vendor/libdw1000/src
 
+# libdict, a C library implementing dictionaries
+VPATH_CF2 += vendor/libdict/src
+
 # vl53l1 driver
 VPATH_CF2 += $(LIB)/vl53l1/core/src
 
@@ -138,6 +141,9 @@ PROJ_OBJ_CF2 +=  pm_f405.o syslink.o radiolink.o ow_syslink.o proximity.o usec_t
 PROJ_OBJ_CF2 +=  sensors_$(SENSORS).o
 # libdw
 PROJ_OBJ_CF2 += libdw1000.o libdw1000Spi.o
+
+# libdict
+PROJ_OBJ_CF2 += dict.o sp_tree.o hb_tree.o tr_tree.o hashtable.o pr_tree.o tree_common.o hashtable2.o rb_tree.o hashtable_common.o skiplist.o wb_tree.o
 
 # vl53l1 lib
 PROJ_OBJ_CF2 += vl53l1_api_core.o vl53l1_api.o vl53l1_core.o vl53l1_silicon_core.o vl53l1_api_strings.o
@@ -288,7 +294,7 @@ CFLAGS += -Wdouble-promotion
 
 
 ASFLAGS = $(PROCESSOR) $(INCLUDES)
-LDFLAGS = --specs=nano.specs $(PROCESSOR) -Wl,-Map=$(PROG).map,--cref,--gc-sections,--undefined=uxTopUsedPriority
+LDFLAGS = --specs=nano.specs --specs=nosys.specs $(PROCESSOR) -Wl,-Map=$(PROG).map,--cref,--gc-sections,--undefined=uxTopUsedPriority
 
 #Flags required by the ST library
 ifeq ($(CLOAD), 1)
