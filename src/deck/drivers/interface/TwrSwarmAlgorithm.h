@@ -6,6 +6,6 @@ typedef struct {
   void (*test)(void);
 } TwrSwarmAlgorithm;
 
-TwrSwarmAlgorithm* twrSwarmAlgorithmInit(void);
+extern TwrSwarmAlgorithm twrSwarmAlgorithm;
 
 #endif /* TwrSwarmAlgorithm_h */
