@@ -12,4 +12,4 @@
 	url = https://github.com/ARM-software/CMSIS
 [submodule "vendor/libdict"]
 	path = vendor/libdict
-	url = https://github.com/fmela/libdict
+	url = https://github.com/acecilia/libdict
