@@ -190,6 +190,7 @@ PROJ_OBJ_CF2 += locodeck.o
 PROJ_OBJ_CF2 += lpsTwrTag.o
 PROJ_OBJ_CF2 += lpsTdoaTag.o
 PROJ_OBJ_CF2 += lpsTwrSwarmTag.o
+PROJ_OBJ_CF2 += TwrSwarmAlgorithm.o
 PROJ_OBJ_CF2 += outlierFilter.o
 PROJ_OBJ_CF2 += flowdeck.o
 PROJ_OBJ_CF2 += oa.o
@@ -330,7 +331,7 @@ endif
 
 all: check_submodules build
 build: clean_version compile print_version size
-compile: clean_version $(PROG).hex $(PROG).bin $(PROG).dfu
+compile: $(PROG).hex $(PROG).bin $(PROG).dfu
 
 libarm_math.a:
 	+$(MAKE) -C tools/make/cmsis_dsp/ V=$(V)

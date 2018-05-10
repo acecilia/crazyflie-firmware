@@ -40,12 +40,12 @@
 #include "estimator_kalman.h"
 #include "arm_math.h"
 
-#include "dict.h"
-
 // Additions
 #include "led.h"
 #include "debug.h"
 #include "timers.h"
+
+#include "TwrSwarmAlgorithm.h"
 
 // Rangin statistics
 static uint16_t rangingPerSec = 0;
@@ -55,8 +55,6 @@ static uint16_t succededRangingCounter = 0;
 static uint16_t failedRangingCounter = 0;
 
 #define INDEX 1
-
-static dict *dct = NULL;
 
 /*
 // Timestamps for ranging
@@ -109,7 +107,7 @@ static void logTimerCallback(xTimerHandle timer) {
   succededRangingCounter = 0;
 }
 
-static void sendData(dwDevice_t *dev, void *data, bool waitForResponse) {
+/*static void sendData(dwDevice_t *dev, void *data, bool waitForResponse) {
   dwNewTransmit(dev);
   dwSetDefaults(dev);
   dwSetData(dev, (uint8_t*)&data, MAC802154_HEADER_LENGTH+2);
@@ -121,30 +119,11 @@ static void waitForResponse(dwDevice_t *dev) {
   dwNewReceive(dev);
   dwSetDefaults(dev);
   dwStartReceive(dev);
-}
+}*/
 
 static void txcallback(dwDevice_t *dev) { }
 
-static uint32_t rxcallback(dwDevice_t *dev) {
-
-  int8_t key = 1;
-  dict_insert_result result = dict_insert(dct, &key);
-
-  if (result.inserted) {
-    *result.datum_ptr = "example value";
-    DEBUG_PRINT("inserted '%d': '%s'\n", key, (char *)*result.datum_ptr);
-  } else {
-    //DEBUG_PRINT("Didnt work!");
-  }
-
-  int8_t key2 = 1;
-  void** search = dict_search(dct, &key2);
-  if (search) {
-    //DEBUG_PRINT("found '%d': '%s'\n", key2, *(char **)search);
-  } else {
-    //DEBUG_PRINT("'%d' not found!\n", key2);
-  }
-  
+static uint32_t rxcallback(dwDevice_t *dev) {  
   /*
   txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
   txPacket.payload[LPS_TWR_SEQ] = ++curr_seq;
@@ -223,15 +202,15 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 
 static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 {
+  // TwrSwarmAlgorithm *twrSwarmAlgorithm = twrSwarmAlgorithmInit();
+  // twrSwarmAlgorithm->test();
+
   // options = algoOptions;
 
   // Initialize the logging timer
   logTimer = xTimerCreate("loggingTimer", M2T(1000), pdTRUE, NULL, logTimerCallback);
   xTimerStart(logTimer, 0);
-
-  // Initialize the dictionary storing the rangings
-  dct = hashtable2_dict_new((dict_compare_func)strcmp, dict_str_hash, 10);
-
+  
   // Initialize the packet in the TX buffer
   memset(&txPacket, 0, sizeof(txPacket));
   MAC80215_PACKET_INIT(txPacket, MAC802154_TYPE_DATA);
