@@ -5,7 +5,12 @@
 
 static dict *dct = NULL;
 
-int intcmp(const int *__s1, const int *__s2) {
+// TODO: This two functions for comparing and hashing uint8_t values may be taken to another file of the project, where makes more sense to place them
+
+/**
+ Comparator between two uint8_t values, to be used with the libdict library. See: https://github.com/fmela/libdict
+ */
+int uint8_cmp(const uint8_t *__s1, const uint8_t *__s2) {
   if (*__s1 == *__s2) {
     return 0;
   } else if (*__s1 < *__s2) {
@@ -15,13 +20,20 @@ int intcmp(const int *__s1, const int *__s2) {
   }
 }
 
+/**
+ Hash function of a uint8_t value, to be used with the libdict library. See: https://github.com/fmela/libdict
+ */
+unsigned uint8_hash(const uint8_t* k) {
+  return *k;
+}
+
 static void init() {
   // Initialize the dictionary storing the rangings
-  dct = hashtable2_dict_new((dict_compare_func)intcmp, dict_str_hash, 10);
+  dct = hashtable2_dict_new((dict_compare_func)uint8_cmp, (dict_hash_func)uint8_hash, 10);
 }
 
 static void test() {
-  int key = 3;
+  uint8_t key = 3;
   dict_insert_result result = dict_insert(dct, &key);
 
   if (result.inserted) {
@@ -31,7 +43,7 @@ static void test() {
     DEBUG_PRINT("Didnt work!");
   }
 
-  int key2 = 3;
+  uint8_t key2 = 3;
   void** search = dict_search(dct, &key2);
   if (search) {
     DEBUG_PRINT("found '%d': '%s'\n", key2, *(char **)search);
