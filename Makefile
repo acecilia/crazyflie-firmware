@@ -146,7 +146,7 @@ PROJ_OBJ_CF2 += libdw1000.o libdw1000Spi.o
 PROJ_OBJ_CF2 += dict.o sp_tree.o hb_tree.o tr_tree.o hashtable.o pr_tree.o tree_common.o hashtable2.o rb_tree.o hashtable_common.o skiplist.o wb_tree.o
 
 # Libdict benchmark
-PROJ_OBJ_CF2 += libdict_benchmark.o dict_private.o
+PROJ_OBJ_CF2 += libdict_benchmark.o
 
 # vl53l1 lib
 PROJ_OBJ_CF2 += vl53l1_api_core.o vl53l1_api.o vl53l1_core.o vl53l1_silicon_core.o vl53l1_api_strings.o
