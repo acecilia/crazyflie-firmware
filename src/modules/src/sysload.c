@@ -32,6 +32,7 @@
 #include "debug.h"
 #include "cfassert.h"
 #include "param.h"
+#include "libdict_test.h"
 
 #include "sysload.h"
 
@@ -80,8 +81,67 @@ static taskData_t* getPreviousTaskData(uint32_t xTaskNumber) {
   return result;
 }
 
+
+static char* getName(dictionary_t type) {
+  switch (type) {
+    case height_balanced: return "height_balanced";
+    case path_reduction: return "path_reduction";
+    case red_black: return "red_black";
+    case treap: return "treap";
+    case splay: return "splay";
+    case skip_list: return "skip_list";
+    case weight_balanced: return "weight_balanced";
+    case hashtable_separate_chaining: return "hashtable_separate_chaining";
+    case hashtable_open_addressing: return "hashtable_open_addressing";
+    default: return "error";
+  }
+}
+
+static void test_libdict() {
+  configure_dict_malloc();
+
+  dictionary_t type_array[] = {
+    height_balanced,
+    path_reduction,
+    red_black,
+    treap,
+    splay,
+    skip_list,
+    weight_balanced,
+    hashtable_separate_chaining,
+    hashtable_open_addressing
+  };
+  int length = sizeof(type_array) / sizeof(dictionary_t);
+
+  DEBUG_PRINT("Available memory: %d\n", xPortGetFreeHeapSize());
+
+  for(int i = 0; i < length; i++) {
+    int32_t r2 = benchmark_uint_keys_dict_insert_remove(type_array[i], 5000);
+    DEBUG_PRINT("%d [%s]\n", r2, getName(type_array[i]));
+  }
+
+  DEBUG_PRINT("Available memory: %d\n", xPortGetFreeHeapSize());
+
+  // Libdict tests
+  //DEBUG_PRINT("Libdict find test starting\n");
+  //bool r1 = test_uint8_find(hashtable_open_addressing);
+  //DEBUG_PRINT("Libdict find test finished. Result: %d\n", r1);
+
+  //DEBUG_PRINT("Available memory: %d\n", xPortGetFreeHeapSize());
+
+  //DEBUG_PRINT("Libdict insert test starting\n");
+  //int r3 = benchmark_uint_keys_dict_insert(hashtable_open_addressing);
+  //DEBUG_PRINT("Libdict insert test finished. Result: %d insertions\n", r3);
+
+  //DEBUG_PRINT("Available memory: %d\n", xPortGetFreeHeapSize());
+}
+
 static void timerHandler(xTimerHandle timer) {
   if (triggerDump != 0) {
+    test_libdict();
+    triggerDump = 0;
+    return;
+
     uint32_t totalRunTime;
 
     TaskStatus_t taskStats[TASK_MAX_COUNT];
@@ -113,7 +173,6 @@ static void timerHandler(xTimerHandle timer) {
     triggerDump = 0;
   }
 }
-
 
 PARAM_GROUP_START(system)
 PARAM_ADD(PARAM_UINT8, taskDump, &triggerDump)

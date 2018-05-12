@@ -6,8 +6,10 @@
 static dict *dct = NULL;
 
 static void init() {
+  configure_dict_malloc();
+
   // Initialize the dictionary storing the rangings
-  dct = hashtable2_dict_new((dict_compare_func)uint8_cmp, (dict_hash_func)uint8_hash, 10);
+  dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10);
 }
 
 TwrSwarmAlgorithm twrSwarmAlgorithm = {

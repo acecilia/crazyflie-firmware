@@ -3,45 +3,47 @@
  */
 
 #include "libdict.h"
+#include "FreeRTOS.h"
+#include "debug.h"
+
+/**
+ Make the library use the malloc and free functions from freeRTOS. Necessary to call this function once before using anything from the library
+ */
+void configure_dict_malloc() {
+  // This is disabled for now, because enabling it makes the crazyflie crash
+  // dict_malloc_func = pvPortMalloc;
+  // dict_free_func = vPortFree;
+}
+
+/**
+ Function to pass when calling dict_free
+ */
+void key_val_free(void *key, void *value) {
+  dict_free_func(key);
+  dict_free_func(value);
+}
 
 /**
  Comparator between two uint8_t values
  */
-int uint8_cmp(const uint8_t *__s1, const uint8_t *__s2) {
-  if (*__s1 == *__s2) {
-    return 0;
-  } else if (*__s1 < *__s2) {
-    return -1;
-  } else {
-    return 1;
-  }
+int dict_uint8_cmp(const void* k1, const void* k2) {
+  const uint8_t a = *(const uint8_t*)k1;
+  const uint8_t b = *(const uint8_t*)k2;
+  return (a > b) - (a < b);
 }
 
 /**
  Hash function of a uint8_t value
  */
-unsigned uint8_hash(const uint8_t* k) {
-  return *k;
-}
-
-/**
- Comparator between two unsigned int values
- */
-int uint_cmp(const unsigned *__s1, const unsigned *__s2) {
-  if (*__s1 == *__s2) {
-    return 0;
-  } else if (*__s1 < *__s2) {
-    return -1;
-  } else {
-    return 1;
-  }
+unsigned dict_uint8_hash(const void* k) {
+  return *(uint8_t*)k;
 }
 
 /**
  Hash function of an unsigned int value
  */
-unsigned uint_hash(const unsigned* k) {
-  return *k;
+unsigned dict_uint_hash(const void* k) {
+  return *(unsigned int*)k;
 }
 
 dict* create_dictionary(dictionary_t type, dict_compare_func cmp_func, dict_hash_func hash_func, unsigned hash_table_initial_size) {
