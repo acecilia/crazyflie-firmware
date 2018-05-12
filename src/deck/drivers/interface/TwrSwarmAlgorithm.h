@@ -3,7 +3,6 @@
 
 typedef struct {
   void (*init)(void);
-  void (*test)(void);
 } TwrSwarmAlgorithm;
 
 extern TwrSwarmAlgorithm twrSwarmAlgorithm;

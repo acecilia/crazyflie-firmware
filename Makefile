@@ -145,8 +145,8 @@ PROJ_OBJ_CF2 += libdw1000.o libdw1000Spi.o
 # libdict
 PROJ_OBJ_CF2 += dict.o sp_tree.o hb_tree.o tr_tree.o hashtable.o pr_tree.o tree_common.o hashtable2.o rb_tree.o hashtable_common.o skiplist.o wb_tree.o
 
-# Libdict benchmark
-PROJ_OBJ_CF2 += libdict_benchmark.o
+# libdict custom crazyflie helpers
+PROJ_OBJ_CF2 += libdict.o libdict_test.o
 
 # vl53l1 lib
 PROJ_OBJ_CF2 += vl53l1_api_core.o vl53l1_api.o vl53l1_core.o vl53l1_silicon_core.o vl53l1_api_strings.o
@@ -251,7 +251,6 @@ INCLUDES_CF2 += -I$(LIB)/STM32_USB_OTG_Driver/inc
 INCLUDES_CF2 += -Isrc/deck/interface -Isrc/deck/drivers/interface
 INCLUDES_CF2 += -Ivendor/libdw1000/inc
 INCLUDES_CF2 += -Ivendor/libdict/include
-INCLUDES_CF2 += -Ivendor/libdict/src # Needed to include some headers stored on the src folder, for benchmmark
 INCLUDES_CF2 += -I$(LIB)/FatFS
 INCLUDES_CF2 += -I$(LIB)/vl53l1
 INCLUDES_CF2 += -I$(LIB)/vl53l1/core/inc

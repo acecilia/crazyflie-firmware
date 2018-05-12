@@ -203,7 +203,6 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 {
   twrSwarmAlgorithm.init();
-  twrSwarmAlgorithm.test();
 
   // options = algoOptions;
 
