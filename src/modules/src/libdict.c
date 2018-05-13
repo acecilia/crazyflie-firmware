@@ -10,17 +10,17 @@
  Make the library use the malloc and free functions from freeRTOS. Necessary to call this function once before using anything from the library
  */
 void configure_dict_malloc() {
-  // This is disabled for now, because enabling it makes the crazyflie crash
-  // dict_malloc_func = pvPortMalloc;
-  // dict_free_func = vPortFree;
+  dict_malloc_func = pvPortMalloc;
+  dict_free_func = vPortFree;
 }
 
 /**
  Function to pass when calling dict_free
  */
 void key_val_free(void *key, void *value) {
-  dict_free_func(key);
-  dict_free_func(value);
+  // After a lot of trial and error, seems like freeing key and value makes the crazyflie crash, and is not reflected when calling xPortGetFreeHeapSize(). The displayed error is: "SYS: Assert failed src/lib/FreeRTOS/portable/MemMang/heap_4.c:317". I will comment the lines for now
+  // dict_free_func(key);
+  // dict_free_func(value);
 }
 
 /**

@@ -98,8 +98,7 @@ static char* getName(dictionary_t type) {
 }
 
 static void test_libdict() {
-  configure_dict_malloc();
-
+  // Required to disable the watchdog (find watchdogInit in the project and comment it). Enabling the DEBUG mode brings memory problems
   dictionary_t type_array[] = {
     height_balanced,
     path_reduction,
@@ -113,35 +112,30 @@ static void test_libdict() {
   };
   int length = sizeof(type_array) / sizeof(dictionary_t);
 
-  DEBUG_PRINT("Available memory: %d\n", xPortGetFreeHeapSize());
+  configure_dict_malloc();
 
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
+
+  DEBUG_PRINT("### Insert/search test:\n");
   for(int i = 0; i < length; i++) {
-    int32_t r2 = benchmark_uint_keys_dict_insert_remove(type_array[i], 5000);
-    DEBUG_PRINT("%d [%s]\n", r2, getName(type_array[i]));
+    char* r1 = test_uint8_insert_search(type_array[i]) ? "Ok" : "Failed";
+    DEBUG_PRINT("%s [%s]\n", r1, getName(type_array[i]));
   }
 
-  DEBUG_PRINT("Available memory: %d\n", xPortGetFreeHeapSize());
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
-  // Libdict tests
-  //DEBUG_PRINT("Libdict find test starting\n");
-  //bool r1 = test_uint8_find(hashtable_open_addressing);
-  //DEBUG_PRINT("Libdict find test finished. Result: %d\n", r1);
+  int benchmark_duration_ms = 5000;
+  DEBUG_PRINT("### Insert/remove benchmark (%d ms):\n", benchmark_duration_ms);
+  for(int i = 0; i < length; i++) {
+    int r1 = benchmark_uint_keys_dict_insert_remove(type_array[i], benchmark_duration_ms);
+    DEBUG_PRINT("%d [%s]\n", r1, getName(type_array[i]));
+  }
 
-  //DEBUG_PRINT("Available memory: %d\n", xPortGetFreeHeapSize());
-
-  //DEBUG_PRINT("Libdict insert test starting\n");
-  //int r3 = benchmark_uint_keys_dict_insert(hashtable_open_addressing);
-  //DEBUG_PRINT("Libdict insert test finished. Result: %d insertions\n", r3);
-
-  //DEBUG_PRINT("Available memory: %d\n", xPortGetFreeHeapSize());
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 }
 
 static void timerHandler(xTimerHandle timer) {
   if (triggerDump != 0) {
-    test_libdict();
-    triggerDump = 0;
-    return;
-
     uint32_t totalRunTime;
 
     TaskStatus_t taskStats[TASK_MAX_COUNT];
@@ -169,6 +163,8 @@ static void timerHandler(xTimerHandle timer) {
     }
 
     previousTotalRunTime = totalRunTime;
+
+    test_libdict();
 
     triggerDump = 0;
   }
