@@ -54,10 +54,17 @@ void test_libdict() {
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
-  int benchmark_duration_ms = 5000;
-  DEBUG_PRINT("\n### Insert benchmark (%d ms):\n", benchmark_duration_ms);
+  DEBUG_PRINT("\n### Insert memory benchmark (higher is better):\n");
   for(int i = 0; i < length; i++) {
-    int result = benchmark_uint_keys_dict_insert(type_array[i], benchmark_duration_ms);
+    int result = benchmark_uint_keys_dict_insert_memory(type_array[i]);
+    DEBUG_PRINT("%d [%s]\n", result, getName(type_array[i]));
+  }
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
+
+  int benchmark_duration_ms = 5000;
+  DEBUG_PRINT("\n### Insert speed benchmark (%d ms, higher is better):\n", benchmark_duration_ms);
+  for(int i = 0; i < length; i++) {
+    int result = benchmark_uint_keys_dict_insert_speed(type_array[i], benchmark_duration_ms);
     DEBUG_PRINT("%d [%s]\n", result, getName(type_array[i]));
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());

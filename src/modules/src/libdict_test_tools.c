@@ -4,9 +4,9 @@
 #include <string.h>
 
 /**
- Insert a key from the dictionary continuously during the specified milliseconds, counting the number of times
+ Inserts a key from the dictionary continuously during the specified milliseconds, counting the number of times
  */
-int benchmark_uint_keys_dict_insert(dictionary_t type, int ms) {
+int benchmark_uint_keys_dict_insert_speed(dictionary_t type, int ms) {
   int ticks_delta = M2T(ms);
   int returnValue = 0;
   unsigned int keyContent = 0;
@@ -26,6 +26,32 @@ int benchmark_uint_keys_dict_insert(dictionary_t type, int ms) {
     dict_clear(dct, key_val_free);
 
     if (inserted) {
+      keyContent++;
+      returnValue++;
+    } else {
+      returnValue = -1;
+      break;
+    }
+  }
+
+  dict_free(dct, key_val_free);
+  return returnValue;
+}
+
+/**
+ Inserts a key from the dictionary continuously until the memory is filled, counting the number of times
+ */
+int benchmark_uint_keys_dict_insert_memory(dictionary_t type) {
+  int returnValue = 0;
+  unsigned int keyContent = 0;
+
+  dict *dct = create_dictionary(type, dict_uint_cmp, dict_uint_hash, 10);
+
+  while (xPortGetFreeHeapSize() > 4000) {
+    unsigned int* key = pvPortMalloc(sizeof(unsigned int));
+    *key = keyContent;
+
+    if (dict_insert(dct, key).inserted) {
       keyContent++;
       returnValue++;
     } else {
