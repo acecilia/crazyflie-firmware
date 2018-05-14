@@ -34,7 +34,10 @@ static char* getName(dictionary_t type) {
 
 /**
  Printing tests. Requires disabling the watchdog.
- Notes: I have observed that running this in DEBUG mode leads to the crazyflie crashing, but running it in release mode with the watchdog disabled works fine. To disable the watchdog, look for calls to the function "watchdogInit" and comment them
+ Notes: I have observed that running this in DEBUG mode leads to:
+ * The crazyflie crashing
+ * The results returned by the benchmak being approximately 1/4 of the results in release mode
+ To disable the watchdog in release mode, look for calls to the function "watchdogInit" and comment them
  */
 void test_libdict() {
   int length = sizeof(type_array) / sizeof(dictionary_t);
