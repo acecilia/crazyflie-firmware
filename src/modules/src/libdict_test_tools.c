@@ -52,8 +52,8 @@ bool test_uint8_insert_search(dictionary_t type) {
   uint8_t* searchKey = pvPortMalloc(sizeof(uint8_t));
   *searchKey = 5;
   char* valueContent = "Value example";
-  char* value = pvPortMalloc(sizeof(char) * strlen(valueContent));
-  *value = *valueContent;
+  char* value = pvPortMalloc(sizeof(char) * (strlen(valueContent) + 1));
+  strcpy(value, valueContent);
 
   dict_insert_result insert_result = dict_insert(dct, insertKey);
   if (insert_result.inserted) {
