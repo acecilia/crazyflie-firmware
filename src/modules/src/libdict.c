@@ -18,9 +18,9 @@ void configure_dict_malloc() {
  Function to pass when calling dict_free
  */
 void key_val_free(void *key, void *value) {
-  // After a lot of trial and error, seems like freeing key and value makes the crazyflie crash, and is not reflected when calling xPortGetFreeHeapSize(). The displayed error is: "SYS: Assert failed src/lib/FreeRTOS/portable/MemMang/heap_4.c:317". I will comment the lines for now
-  // dict_free_func(key);
-  // dict_free_func(value);
+  // In order for this to work, you should have used dict_malloc_func before to allocate key and value
+  dict_free_func(key);
+  dict_free_func(value);
 }
 
 /**
@@ -46,6 +46,9 @@ unsigned dict_uint_hash(const void* k) {
   return *(unsigned int*)k;
 }
 
+/**
+ Create a dictionary. Useful when you want to create different types of dictionaries in an automatic way (for example, using loops). For creating only one dictionary better use the function associated with it, instead of this one
+ */
 dict* create_dictionary(dictionary_t type, dict_compare_func cmp_func, dict_hash_func hash_func, unsigned hash_table_initial_size) {
   switch (type) {
     case height_balanced:
