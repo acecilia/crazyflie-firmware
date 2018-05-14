@@ -39,7 +39,7 @@ static char* getName(dictionary_t type) {
  Printing tests. Requires disabling the watchdog.
  Notes: I have observed that running this in DEBUG mode leads to:
  * The crazyflie crashing
- * The results returned by the benchmak being approximately 1/4 of the results in release mode
+ * The results returned by the benchmak being approximately 1/4 as good as the results in release mode
  To disable the watchdog in release mode, look for calls to the function "watchdogInit" and comment them
  */
 void test_libdict() {
@@ -47,7 +47,7 @@ void test_libdict() {
 
   configure_dict_malloc();
 
-  DEBUG_PRINT("\n#### Starting libdict tests:\n");
+  DEBUG_PRINT("\n#### Starting libdict tests (REMEMBER: requires to disable the watchdog):\n");
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
   DEBUG_PRINT("\n### Insert/search test:\n");
