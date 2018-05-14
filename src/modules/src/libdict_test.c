@@ -52,7 +52,7 @@ void test_libdict() {
 
   DEBUG_PRINT("\n### Insert/search test:\n");
   for(int i = 0; i < length; i++) {
-    char* result = test_uint8_insert_search(type_array[i]) ? "Ok" : "Failed";
+    char* result = test_uint8_insert_search(type_array[i]) ? "Passed Ok" : "Failed";
     DEBUG_PRINT("%s [%s]\n", result, getName(type_array[i]));
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
