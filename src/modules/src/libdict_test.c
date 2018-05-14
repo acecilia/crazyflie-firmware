@@ -2,6 +2,9 @@
 #include "FreeRTOS.h"
 #include "debug.h"
 
+/**
+ An array containing all the possible dictionary data structures, for iteration purposes
+ */
 static dictionary_t type_array[] = {
   height_balanced,
   path_reduction,
@@ -57,7 +60,7 @@ void test_libdict() {
   DEBUG_PRINT("\n### Insert memory benchmark (higher is better):\n");
   for(int i = 0; i < length; i++) {
     int result = benchmark_uint_keys_dict_insert_memory(type_array[i]);
-    DEBUG_PRINT("%d [%s]\n", result, getName(type_array[i]));
+    DEBUG_PRINT("%d [%s] [Mem: %d bytes]\n", result, getName(type_array[i]), xPortGetFreeHeapSize());
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
