@@ -60,7 +60,7 @@ bool test_uint8_insert_search(dictionary_t type) {
     *insert_result.datum_ptr = value;
 
     void** search_result = dict_search(dct, searchKey);
-    if (search_result && strcmp(*(char **)search_result, value) == 0) {
+    if (search_result && strcmp(*(char **)search_result, valueContent) == 0) {
       returnValue = true;
     }
   }
