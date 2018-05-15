@@ -15,12 +15,18 @@ void configure_dict_malloc() {
 }
 
 /**
- Function to pass when calling dict_free
+ Function to pass when calling dict_free, and the key and the value are allocated dynamically (using malloc or similar)
  */
-void key_val_free(void *key, void *value) {
-  // In order for this to work, you should have used dict_malloc_func before to allocate key and value
+void key_val_dynamic_free(void *key, void *value) {
   dict_free_func(key);
   dict_free_func(value);
+}
+
+/**
+ Function to pass when calling dict_free, and the key and the value are allocated statically (NOT using malloc or similar)
+ */
+void key_val_static_free(void *key, void *value) {
+  // Do not need to free key or value, since malloc was NOT executed when allocating them
 }
 
 /**

@@ -37,7 +37,7 @@ static char* getName(dictionary_t type) {
 
 /**
  Printing tests. Requires disabling the watchdog.
- Notes: I have observed that running this in DEBUG mode leads to:
+ NOTE: I have observed that running this in DEBUG mode leads to:
  * The crazyflie crashing
  * The results returned by the benchmak being approximately 1/4 as good as the results in release mode
  To disable the watchdog in release mode, look for calls to the function "watchdogInit" and comment them
@@ -47,27 +47,54 @@ void test_libdict() {
 
   configure_dict_malloc();
 
-  DEBUG_PRINT("\n#### Starting libdict tests (REMEMBER: requires to disable the watchdog):\n");
+  DEBUG_PRINT("\n#### Starting libdict tests (NOTE: requires to disable the watchdog [for more info, see documentation of the function executing this code]):\n");
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
-  DEBUG_PRINT("\n### Insert/search test:\n");
+  // Statically allocated key and value tests
+
+  DEBUG_PRINT("\n### Static insert/search test:\n");
   for(int i = 0; i < length; i++) {
-    char* result = test_uint8_insert_search(type_array[i]) ? "Passed Ok" : "Failed";
+    char* result = dict_test_static_uint8_insert_search(type_array[i]) ? "Passed Ok" : "Failed";
     DEBUG_PRINT("%s [%s]\n", result, getName(type_array[i]));
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
-  DEBUG_PRINT("\n### Insert memory benchmark (higher is better):\n");
+  DEBUG_PRINT("\n### Static insert/search test, changing key value (but using all the time the same key pointer):\n");
   for(int i = 0; i < length; i++) {
-    int result = benchmark_uint_keys_dict_insert_memory(type_array[i]);
+    char* result = dict_test_static_uint8_insert_search_changing_key_value(type_array[i]) ? "Passed Ok" : "Failed";
+    DEBUG_PRINT("%s [%s]\n", result, getName(type_array[i]));
+  }
+  DEBUG_PRINT("NOTE: This test may pass for some data structures, and not for others. Seems like the underlying implementation differs between them\n");
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
+
+  int static_benchmark_duration_ms = 5000;
+  DEBUG_PRINT("\n### Static insert speed benchmark (%d ms, higher is better):\n", static_benchmark_duration_ms);
+  for(int i = 0; i < length; i++) {
+    int result = dict_benchmark_static_uint_keys_insert_speed(type_array[i], static_benchmark_duration_ms);
+    DEBUG_PRINT("%d [%s]\n", result, getName(type_array[i]));
+  }
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
+
+  // Dynamically allocated key and value tests
+
+  DEBUG_PRINT("\n### Dynamic insert/search test:\n");
+  for(int i = 0; i < length; i++) {
+    char* result = dict_test_dynamic_uint8_insert_search(type_array[i]) ? "Passed Ok" : "Failed";
+    DEBUG_PRINT("%s [%s]\n", result, getName(type_array[i]));
+  }
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
+
+  DEBUG_PRINT("\n### Dynamic insert memory benchmark (higher is better):\n");
+  for(int i = 0; i < length; i++) {
+    int result = dict_benchmark_dynamic_uint_keys_insert_memory(type_array[i]);
     DEBUG_PRINT("%d [%s] [Mem: %d bytes]\n", result, getName(type_array[i]), xPortGetFreeHeapSize());
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
-  int benchmark_duration_ms = 5000;
-  DEBUG_PRINT("\n### Insert speed benchmark (%d ms, higher is better):\n", benchmark_duration_ms);
+  int dynamic_benchmark_duration_ms = 5000;
+  DEBUG_PRINT("\n### Dynamic insert speed benchmark (%d ms, higher is better):\n", dynamic_benchmark_duration_ms);
   for(int i = 0; i < length; i++) {
-    int result = benchmark_uint_keys_dict_insert_speed(type_array[i], benchmark_duration_ms);
+    int result = dict_benchmark_dynamic_uint_keys_insert_speed(type_array[i], dynamic_benchmark_duration_ms);
     DEBUG_PRINT("%d [%s]\n", result, getName(type_array[i]));
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());

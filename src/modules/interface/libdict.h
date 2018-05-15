@@ -17,7 +17,8 @@ typedef enum {
 
 void configure_dict_malloc(void);
 
-void key_val_free(void *key, void *value);
+void key_val_dynamic_free(void *key, void *value);
+void key_val_static_free(void *key, void *value);
 
 int dict_uint8_cmp(const void *__s1, const void *__s2);
 unsigned dict_uint8_hash(const void* k);
