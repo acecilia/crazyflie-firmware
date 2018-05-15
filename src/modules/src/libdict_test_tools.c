@@ -47,7 +47,7 @@ int dict_benchmark_dynamic_uint_keys_insert_memory(dictionary_t type) {
 
   dict *dct = create_dictionary(type, dict_uint_cmp, dict_uint_hash, 10);
 
-  while (xPortGetFreeHeapSize() > 4000) {
+  while (xPortGetFreeHeapSize() > 5000) {
     unsigned int* key = pvPortMalloc(sizeof(unsigned int));
     *key = keyContent;
 
