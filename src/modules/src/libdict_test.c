@@ -66,14 +66,14 @@ void test_libdict() {
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
-  int dynamic_benchmark_duration_ms = 5000;
+  int dynamic_benchmark_duration_ms = 2000;
   DEBUG_PRINT("\n### Dynamic insert speed benchmark (%d ms, higher is better):\n", dynamic_benchmark_duration_ms);
   for(int i = 0; i < length; i++) {
     int result = dict_benchmark_dynamic_uint_keys_insert_speed(type_array[i], dynamic_benchmark_duration_ms);
     DEBUG_PRINT("%d [%s]\n", result, getName(type_array[i]));
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
-  
+
   // Statically allocated key and value tests
 
   DEBUG_PRINT("\n### Static insert/search test:\n");
@@ -91,7 +91,7 @@ void test_libdict() {
   DEBUG_PRINT("NOTE: This test may pass for some data structures, and not for others. Seems like the underlying implementation differs between them\n");
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
-  int static_benchmark_duration_ms = 5000;
+  int static_benchmark_duration_ms = 2000;
   DEBUG_PRINT("\n### Static insert speed benchmark (%d ms, higher is better):\n", static_benchmark_duration_ms);
   for(int i = 0; i < length; i++) {
     int result = dict_benchmark_static_uint_keys_insert_speed(type_array[i], static_benchmark_duration_ms);
