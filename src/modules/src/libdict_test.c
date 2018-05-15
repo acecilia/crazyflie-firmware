@@ -50,6 +50,30 @@ void test_libdict() {
   DEBUG_PRINT("\n#### Starting libdict tests (NOTE: requires to disable the watchdog [for more info, see documentation of the function executing this code]):\n");
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
 
+  // Dynamically allocated key and value tests
+
+  DEBUG_PRINT("\n### Dynamic insert/search test:\n");
+  for(int i = 0; i < length; i++) {
+    char* result = dict_test_dynamic_uint8_insert_search(type_array[i]) ? "Passed Ok" : "Failed";
+    DEBUG_PRINT("%s [%s]\n", result, getName(type_array[i]));
+  }
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
+
+  DEBUG_PRINT("\n### Dynamic insert memory benchmark (higher is better):\n");
+  for(int i = 0; i < length; i++) {
+    int result = dict_benchmark_dynamic_uint_keys_insert_memory(type_array[i]);
+    DEBUG_PRINT("%d [%s] [Mem: %d bytes]\n", result, getName(type_array[i]), xPortGetFreeHeapSize());
+  }
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
+
+  int dynamic_benchmark_duration_ms = 5000;
+  DEBUG_PRINT("\n### Dynamic insert speed benchmark (%d ms, higher is better):\n", dynamic_benchmark_duration_ms);
+  for(int i = 0; i < length; i++) {
+    int result = dict_benchmark_dynamic_uint_keys_insert_speed(type_array[i], dynamic_benchmark_duration_ms);
+    DEBUG_PRINT("%d [%s]\n", result, getName(type_array[i]));
+  }
+  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
+  
   // Statically allocated key and value tests
 
   DEBUG_PRINT("\n### Static insert/search test:\n");
@@ -71,30 +95,6 @@ void test_libdict() {
   DEBUG_PRINT("\n### Static insert speed benchmark (%d ms, higher is better):\n", static_benchmark_duration_ms);
   for(int i = 0; i < length; i++) {
     int result = dict_benchmark_static_uint_keys_insert_speed(type_array[i], static_benchmark_duration_ms);
-    DEBUG_PRINT("%d [%s]\n", result, getName(type_array[i]));
-  }
-  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
-
-  // Dynamically allocated key and value tests
-
-  DEBUG_PRINT("\n### Dynamic insert/search test:\n");
-  for(int i = 0; i < length; i++) {
-    char* result = dict_test_dynamic_uint8_insert_search(type_array[i]) ? "Passed Ok" : "Failed";
-    DEBUG_PRINT("%s [%s]\n", result, getName(type_array[i]));
-  }
-  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
-
-  DEBUG_PRINT("\n### Dynamic insert memory benchmark (higher is better):\n");
-  for(int i = 0; i < length; i++) {
-    int result = dict_benchmark_dynamic_uint_keys_insert_memory(type_array[i]);
-    DEBUG_PRINT("%d [%s] [Mem: %d bytes]\n", result, getName(type_array[i]), xPortGetFreeHeapSize());
-  }
-  DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
-
-  int dynamic_benchmark_duration_ms = 5000;
-  DEBUG_PRINT("\n### Dynamic insert speed benchmark (%d ms, higher is better):\n", dynamic_benchmark_duration_ms);
-  for(int i = 0; i < length; i++) {
-    int result = dict_benchmark_dynamic_uint_keys_insert_speed(type_array[i], dynamic_benchmark_duration_ms);
     DEBUG_PRINT("%d [%s]\n", result, getName(type_array[i]));
   }
   DEBUG_PRINT("[Mem: %d bytes]\n", xPortGetFreeHeapSize());
