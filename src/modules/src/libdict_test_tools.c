@@ -109,8 +109,11 @@ int dict_benchmark_static_uint_keys_insert_speed(dictionary_t type, int ms) {
   unsigned int end = start + ticks_delta;
 
   while (xTaskGetTickCount() < end) {
-    // Because the crazyflie has limited memory, in order to perform the test we have to remove the inserted key (otherwise the memory will be filled before finishing the benchmark)
-    if (dict_insert(dct, &key).inserted && dict_remove(dct, &key).removed) {
+    bool inserted = dict_insert(dct, &key).inserted;
+    // Because the crazyflie has limited memory, in order to perform the test we have to clear the dictionary (otherwise the memory will be filled before finishing the benchmark)
+    dict_clear(dct, key_val_static_free);
+
+    if (inserted) {
       key++;
       returnValue++;
     } else {
