@@ -24,6 +24,24 @@
  */
 
 
+/*
+
+The tag is assumed to move around in a large system of anchors. Any anchor ids
+can be used, and the same anchor id can even be used by multiple anchors as long
+as they are not visible in the same area. It is assumed that the anchor density
+is evenly distributed in the covered volume and that 5-20 anchors are visible
+in every point. The tag is attached to a physical object and the expected
+velocity is a few m/s, this means that anchors are within range for a time
+period of seconds.
+
+The implementation must handle
+1. An infinite number of anchors, where around 20 are visible at one time
+2. Any anchor ids
+3. Dynamically changing visibility of anchors over time
+4. Random TX times from anchors with possible packet collisions and packet loss
+
+*/
+
 #include <string.h>
 
 #include "FreeRTOS.h"
@@ -48,13 +66,13 @@
 #define ANCHOR_OK_TIMEOUT 1500
 
 
-#define ANCHOR_STORAGE_COUNT 8
-#define REMOTE_ANCHOR_DATA_COUNT 8
-#define TOF_PER_ANCHOR_COUNT 8
+#define ANCHOR_STORAGE_COUNT 16
+#define REMOTE_ANCHOR_DATA_COUNT 16
+#define TOF_PER_ANCHOR_COUNT 16
 
-#define TOF_VALIDITY_PERIOD M2T(10 * 1000);
+#define TOF_VALIDITY_PERIOD M2T(2 * 1000);
 #define REMOTE_DATA_VALIDITY_PERIOD M2T(30);
-#define ANCHOR_POSITION_VALIDITY_PERIOD M2T(10 * 1000);
+#define ANCHOR_POSITION_VALIDITY_PERIOD M2T(2 * 1000);
 
 // State
 typedef struct {
@@ -79,7 +97,7 @@ typedef struct {
   int64_t rxTime; // Receive time of last packet, in local DWM clock
   uint8_t seqNr; // Sequence nr of last packet (7 bits)
 
-  double clockCorrection; // local DWM clock frequency / Ratio of remote DWM clock frequency
+  double clockCorrection; // local DWM clock frequency / remote DWM clock frequency
 
   point_t position; // The coordinates of the anchor
 
@@ -88,40 +106,6 @@ typedef struct {
 } anchorInfo_t;
 
 anchorInfo_t anchorStorage[ANCHOR_STORAGE_COUNT];
-
-
-// TODO krri Debug code to dump state to the console, remove
-uint8_t dumpTrigger;
-uint8_t dumpTriggerOld;
-
-static void dumpData(uint8_t anchorId) {
-  uint32_t now = xTaskGetTickCount();
-
-  DEBUG_PRINT("Dump----\n");
-  for (int slot = 0; slot < ANCHOR_STORAGE_COUNT; slot++) {
-    const anchorInfo_t* ctx = &anchorStorage[slot];
-    if (ctx->isInitialized && anchorId == ctx->id) {
-      DEBUG_PRINT("\nAnchor id %i\n", ctx->id);
-      DEBUG_PRINT(" seqNr: %i\n", ctx->seqNr);
-      DEBUG_PRINT(" rx: %lli, tx: %lli\n", ctx->rxTime, ctx->txTime);
-      DEBUG_PRINT(" clockCorrection: %f\n", ctx->clockCorrection);
-
-      DEBUG_PRINT(" TOF:\n");
-      for (int i = 0; i < TOF_PER_ANCHOR_COUNT; i++) {
-        if (ctx->tof[i].endOfLife > now) {
-          DEBUG_PRINT("  id: %i, tof: %lli\n", ctx->tof[i].id, ctx->tof[i].tof);
-        }
-      }
-
-      DEBUG_PRINT(" Remote:\n");
-      for (int i = 0; i < REMOTE_ANCHOR_DATA_COUNT; i++) {
-        if (ctx->remoteAnchorData[i].endOfLife > now) {
-          DEBUG_PRINT("  id: %i, seq: %i, rx: %lli \n", ctx->remoteAnchorData[i].id, ctx->remoteAnchorData[i].seqNr, ctx->remoteAnchorData[i].rxTime);
-        }
-      }
-    }
-  }
-}
 
 static int64_t packetTxTime(const rangePacket3_t* packet) {
   return packet->header.txTimeStamp;
@@ -310,6 +294,9 @@ static void historySetTimeOfFlight(anchorInfo_t* anchorCtx, const uint8_t remote
 
 static lpsAlgoOptions_t* options;
 
+// Outgoing LPP packet
+lpsLppShortPacket_t lppPacket;
+
 // Log data
 
 static struct {
@@ -317,12 +304,14 @@ static struct {
   uint32_t packetsToEstimator;
   uint32_t contextHitCount;
   uint32_t contextMissCount;
+  uint32_t timeIsGood;
   uint32_t suitableDataFound;
 
   uint16_t packetsReceivedRate;
   uint16_t packetsToEstimatorRate;
   uint16_t contextHitRate;
   uint16_t contextMissRate;
+  uint16_t timeIsGoodRate;
   uint16_t suitableDataFoundRate;
 
   uint32_t nextStatisticsTime;
@@ -339,6 +328,7 @@ static struct {
   uint32_t clockCorrectionCount;
   uint16_t clockCorrectionRate;
   uint16_t tof;
+  float tdoa;
 } stats;
 
 
@@ -348,6 +338,7 @@ static void clearStats() {
   stats.clockCorrectionCount = 0;
   stats.contextHitCount = 0;
   stats.contextMissCount = 0;
+  stats.timeIsGood = 0;
   stats.suitableDataFound = 0;
 }
 
@@ -364,6 +355,7 @@ static void updateStats() {
     stats.contextMissRate = (uint16_t)(1000.0f * stats.contextMissCount / interval);
 
     stats.suitableDataFoundRate = (uint16_t)(1000.0f * stats.suitableDataFound / interval);
+    stats.timeIsGoodRate = (uint16_t)(1000.0f * stats.timeIsGood / interval);
 
     if (stats.anchorId != stats.newAnchorId) {
       stats.anchorId = stats.newAnchorId;
@@ -371,6 +363,7 @@ static void updateStats() {
       // Reset anchor stats
       stats.clockCorrection = 0.0;
       stats.tof = 0;
+      stats.tdoa = 0;
     }
 
     if (stats.remoteAnchorId != stats.newRemoteAnchorId) {
@@ -378,6 +371,7 @@ static void updateStats() {
 
       // Reset remote anchor stats
       stats.tof = 0;
+      stats.tdoa = 0;
     }
 
     clearStats();
@@ -421,6 +415,15 @@ static void enqueueTDOA(const anchorInfo_t* anchorACtx, const anchorInfo_t* anch
       stats.packetsToEstimator++;
       estimatorKalmanEnqueueTDOA(&tdoa);
 
+      uint8_t idA = historyGetId(anchorACtx);
+      uint8_t idB = historyGetId(anchorBCtx);
+      if (idA == stats.anchorId && idB == stats.remoteAnchorId) {
+        stats.tdoa = distanceDiff;
+      }
+      if (idB == stats.anchorId && idA == stats.remoteAnchorId) {
+        stats.tdoa = -distanceDiff;
+      }
+
       rangingOk = true;
     }
   }
@@ -429,10 +432,6 @@ static void enqueueTDOA(const anchorInfo_t* anchorACtx, const anchorInfo_t* anch
 static bool isValidTimeStamp(const int64_t anchorRxTime) {
   return anchorRxTime != 0;
 }
-
-//static bool isSeqNrConsecutive(uint8_t prevSeqNr, uint8_t currentSeqNr) {
-//  return (currentSeqNr == ((prevSeqNr + 1) & 0x7f));
-//}
 
 static double calcClockCorrection(const anchorInfo_t* anchorCtx, const rangePacket3_t* packet, const dwTime_t* arrival) {
   const int64_t rxAn_by_T_in_cl_T = arrival->full;
@@ -450,25 +449,27 @@ static double calcClockCorrection(const anchorInfo_t* anchorCtx, const rangePack
   return tickCount_in_T / tickCount_in_cl_An;
 }
 
-static void updateClockCorrection(anchorInfo_t* anchorCtx, const rangePacket3_t* packet, const dwTime_t* arrival) {
+static bool updateClockCorrection(anchorInfo_t* anchorCtx, const rangePacket3_t* packet, const dwTime_t* arrival) {
   double clockCorrectionCandidate = calcClockCorrection(anchorCtx, packet, arrival);
 
-//  const double MAX_CLOCK_CORRECTION_ERR 0.00004
-//  if (clockCorrectionCandidate < (1.0d - MAX_CLOCK_CORRECTION_ERR) || (1.0d + MAX_CLOCK_CORRECTION_ERR) < clockCorrectionCandidate) {
-//    return;
-//  }
+  const double MAX_CLOCK_CORRECTION_ERR = 0.00001;
+  if ((1.0d - MAX_CLOCK_CORRECTION_ERR) < clockCorrectionCandidate && clockCorrectionCandidate < (1.0d + MAX_CLOCK_CORRECTION_ERR)) {
 
-  // TODO krri Add sanity checks
-  //           * reject if missing seq nrs?
-  //           * If too long between samples, clocks may have wrapped several times, problem?
-  // TODO krri reject outliers?
-  // TODO krri LP filter
+    // TODO krri Add sanity checks
+    //           * reject if missing seq nrs?
+    //           * If too long between samples, clocks may have wrapped several times, problem?
+    // TODO krri reject outliers?
+    // TODO krri LP filter
 
-  historySetClockCorrection(anchorCtx, clockCorrectionCandidate);
-  if (historyGetId(anchorCtx) == stats.anchorId) {
-    stats.clockCorrection = clockCorrectionCandidate;
-    stats.clockCorrectionCount++;
+    historySetClockCorrection(anchorCtx, clockCorrectionCandidate);
+    if (historyGetId(anchorCtx) == stats.anchorId) {
+      stats.clockCorrection = clockCorrectionCandidate;
+      stats.clockCorrectionCount++;
+    }
+    return true;
   }
+  
+  return false;
 }
 
 static int64_t calcTDoA(const anchorInfo_t* otherAnchorCtx, const anchorInfo_t* anchorCtx, const rangePacket3_t* packet, const dwTime_t* arrival) {
@@ -548,7 +549,6 @@ static bool findSuitableAnchor(anchorInfo_t** otherAnchorCtx, const anchorInfo_t
     if (candidateAnchorCtx) {
       if (seqNr[i] == historyGetSeqNr(candidateAnchorCtx) && historyGetTimeOfFlight(anchorCtx, candidateAnchorId)) {
         *otherAnchorCtx = candidateAnchorCtx;
-        stats.suitableDataFound++;
         return true;
       }
     }
@@ -603,13 +603,18 @@ static bool rxcallback(dwDevice_t *dev) {
 
   if (anchorCtx) {
     stats.contextHitCount++;
-    updateClockCorrection(anchorCtx, packet, &arrival);
     rangeDataLength = updateRemoteData(anchorCtx, packet);
 
-    anchorInfo_t* otherAnchorCtx = 0;
-    if (findSuitableAnchor(&otherAnchorCtx, anchorCtx)) {
-      float tdoaDistDiff = calcDistanceDiff(otherAnchorCtx, anchorCtx, packet, &arrival);
-      enqueueTDOA(otherAnchorCtx, anchorCtx, tdoaDistDiff);
+    bool timeIsGood = updateClockCorrection(anchorCtx, packet, &arrival);
+    if (timeIsGood) {
+      stats.timeIsGood++;
+
+      anchorInfo_t* otherAnchorCtx = 0;
+      if (findSuitableAnchor(&otherAnchorCtx, anchorCtx)) {
+        stats.suitableDataFound++;
+        float tdoaDistDiff = calcDistanceDiff(otherAnchorCtx, anchorCtx, packet, &arrival);
+        enqueueTDOA(otherAnchorCtx, anchorCtx, tdoaDistDiff);
+      }
     }
   } else {
     stats.contextMissCount++;
@@ -630,17 +635,45 @@ static void setRadioInReceiveMode(dwDevice_t *dev) {
   dwStartReceive(dev);
 }
 
+static void sendLppShort(dwDevice_t *dev, lpsLppShortPacket_t *packet)
+{
+  static packet_t txPacket;
+  dwIdle(dev);
+
+  MAC80215_PACKET_INIT(txPacket, MAC802154_TYPE_DATA);
+
+  txPacket.payload[LPS_TDOA3_TYPE] = LPP_HEADER_SHORT_PACKET;
+  memcpy(&txPacket.payload[LPS_TDOA3_SEND_LPP_PAYLOAD], packet->data, packet->length);
+
+  txPacket.pan = 0xbccf;
+  txPacket.sourceAddress = 0xbccf000000000000 | 0xff;
+  txPacket.destAddress = 0xbccf000000000000 | packet->dest;
+
+  dwNewTransmit(dev);
+  dwSetDefaults(dev);
+  dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+1+packet->length);
+
+  dwStartTransmit(dev);
+}
+
+static bool sendLpp(dwDevice_t *dev) {
+  bool lppPacketToSend = lpsGetLppShort(&lppPacket);
+  if (lppPacketToSend) {
+    sendLppShort(dev, &lppPacket);
+    return true;
+  }
+
+  return false;
+}
+
 static uint32_t onEvent(dwDevice_t *dev, uwbEvent_t event) {
   switch(event) {
     case eventPacketReceived:
       rxcallback(dev);
-      setRadioInReceiveMode(dev);
       break;
     case eventTimeout:
-      setRadioInReceiveMode(dev);
       break;
     case eventReceiveTimeout:
-      setRadioInReceiveMode(dev);
       break;
     case eventPacketSent:
       // Service packet sent, the radio is back to receive automatically
@@ -649,13 +682,12 @@ static uint32_t onEvent(dwDevice_t *dev, uwbEvent_t event) {
       ASSERT_FAILED();
   }
 
+  if(!sendLpp(dev)) {
+    setRadioInReceiveMode(dev);
+  }
+
   updateStats();
   updateRangingState();
-
-  if (dumpTrigger != dumpTriggerOld) {
-    dumpTriggerOld = dumpTrigger;
-    dumpData(dumpTrigger);
-  }
 
   return MAX_TIMEOUT;
 }
@@ -700,20 +732,21 @@ uwbAlgorithm_t uwbTdoa3TagAlgorithm = {
 LOG_GROUP_START(tdoa3)
 LOG_ADD(LOG_UINT16, stRx, &stats.packetsReceivedRate)
 LOG_ADD(LOG_UINT16, stEst, &stats.packetsToEstimatorRate)
+LOG_ADD(LOG_UINT16, stTime, &stats.timeIsGoodRate)
+LOG_ADD(LOG_UINT16, stFound, &stats.suitableDataFoundRate)
+
 LOG_ADD(LOG_UINT16, stCc, &stats.clockCorrectionRate)
 
 LOG_ADD(LOG_UINT16, stHit, &stats.contextHitRate)
 LOG_ADD(LOG_UINT16, stMiss, &stats.contextMissRate)
 
-LOG_ADD(LOG_UINT16, stFound, &stats.suitableDataFound)
-
 LOG_ADD(LOG_FLOAT, cc, &stats.clockCorrection)
 LOG_ADD(LOG_UINT16, tof, &stats.tof)
+LOG_ADD(LOG_FLOAT, tdoa, &stats.tdoa)
 
 LOG_GROUP_STOP(tdoa3)
 
 PARAM_GROUP_START(tdoa3)
-PARAM_ADD(PARAM_UINT8, logid, &stats.newAnchorId)
-PARAM_ADD(PARAM_UINT8, logremid, &stats.newRemoteAnchorId)
-PARAM_ADD(PARAM_UINT8, dump, &dumpTrigger)
+PARAM_ADD(PARAM_UINT8, logId, &stats.newAnchorId)
+PARAM_ADD(PARAM_UINT8, logOthrId, &stats.newRemoteAnchorId)
 PARAM_GROUP_STOP(tdoa3)
