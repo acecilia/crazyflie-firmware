@@ -66,8 +66,10 @@ static dwTime_t final_tx;
 static dwTime_t final_rx;
 */
 
-static packet_t txPacket;
+static lpsAlgoOptions_t* options;
 /*
+static packet_t txPacket;
+
 static volatile uint8_t curr_seq = 0;
 static int current_anchor = 0;
 
@@ -75,8 +77,6 @@ static bool ranging_complete = false;
 static bool lpp_transaction = false;
 
 static lpsLppShortPacket_t lppShortPacket;
-
-static lpsAlgoOptions_t* options;
 
 // TDMA handling
 static bool tdmaSynchronized;
@@ -121,32 +121,24 @@ static void waitForResponse(dwDevice_t *dev) {
   dwStartReceive(dev);
 }*/
 
-static void txcallback(dwDevice_t *dev) { }
-
-static uint32_t rxcallback(dwDevice_t *dev) {  
-  /*
-  txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
-  txPacket.payload[LPS_TWR_SEQ] = ++curr_seq;
-  txPacket.sourceAddress = options->tagAddress;
-  txPacket.destAddress = options->anchorAddress[current_anchor];
-   */
-
-  dwNewTransmit(dev);
-  dwSetDefaults(dev);
-  // dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
-
-  dwWaitForResponse(dev, true);
-  dwStartTransmit(dev);
-  return MAX_TIMEOUT;
+static void txcallback(dwDevice_t *dev) {
+  twrSwarmAlgorithm.txcallback(dev);
 }
 
-static void initiateRanging(dwDevice_t *dev)
-{
-  dwNewTransmit(dev);
-  dwWaitForResponse(dev, true);
-  dwStartTransmit(dev);
-  return;
+static uint32_t rxcallback(dwDevice_t *dev) {
+  // dwTime_t arival = { .full=0 };
+  int dataLength = dwGetDataLength(dev);
+  if (dataLength == 0) return 0;
 
+  lpsSwarmPacket_t rxPacket;
+  dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
+
+  return twrSwarmAlgorithm.rxcallback(dev, &rxPacket, options);
+}
+
+static void initiateRanging(dwDevice_t *dev) {
+  twrSwarmAlgorithm.initiateRanging(dev);
+  
   /* Previous implementation, to use as a guide
   dwIdle(dev);
 
@@ -204,16 +196,16 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 {
   twrSwarmAlgorithm.init();
 
-  // options = algoOptions;
+  options = algoOptions;
 
   // Initialize the logging timer
   logTimer = xTimerCreate("loggingTimer", M2T(1000), pdTRUE, NULL, logTimerCallback);
   xTimerStart(logTimer, 0);
   
   // Initialize the packet in the TX buffer
-  memset(&txPacket, 0, sizeof(txPacket));
-  MAC80215_PACKET_INIT(txPacket, MAC802154_TYPE_DATA);
-  txPacket.pan = 0xbccf;
+  // memset(&txPacket, 0, sizeof(txPacket));
+  // MAC80215_PACKET_INIT(txPacket, MAC802154_TYPE_DATA);
+  // txPacket.pan = 0xbccf;
 
   /*
   memset(&poll_tx, 0, sizeof(poll_tx));
