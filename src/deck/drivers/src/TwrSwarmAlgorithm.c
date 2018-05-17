@@ -3,10 +3,27 @@
 #include "libdict.h"
 #include "debug.h" // To be removed?
 
-static dict *dct = NULL;
-static dwTime_t timeOfLastSentPackage;
-static dwTime_t timeOfLastReceivedPackage;
+///// Debug, to be removed
+#include "timers.h"
+#include "log.h"
+///// Debug, to be removed
 
+static dict *dct = NULL;
+// static dwTime_t timeOfLastSentPackage;
+// static dwTime_t timeOfLastReceivedPackage;
+
+///// Debug, to be removed
+static xTimerHandle debugTimer;
+static void timerCallback(xTimerHandle timer) {
+
+}
+static uint32_t rxCallbackExecution = 0;
+static uint32_t sendingDelay = 0;
+
+dwTime_t rxStartTime = { .full = 0 };
+dwTime_t rxEndTime = { .full = 0 };
+dwTime_t txTime = { .full = 0 };
+///// Debug, to be removed
 
 // static lpsSwarmPacket_t lpsSwarmPacket;
 
@@ -30,33 +47,37 @@ static void init() {
 
   // Initialize the dictionary storing the rangings
   dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10);
+
+  // Initialize the debug timer
+  debugTimer = xTimerCreate("debugTimer", M2T(500), pdTRUE, NULL, timerCallback);
+  xTimerStart(debugTimer, 0);
 }
 
 static void initiateRanging(dwDevice_t *dev) {
   dwNewTransmit(dev);
   dwWaitForResponse(dev, true);
   dwStartTransmit(dev);
-  DEBUG_PRINT("initiateRanging\n");
 }
 
 static uint32_t rxcallback(dwDevice_t *dev, lpsSwarmPacket_t *packet, lpsAlgoOptions_t* options) {
-  DEBUG_PRINT("rxcallback: %d\n", (int)packet->processingTime);
+  ///// Debug, to be removed
+  dwGetSystemTimestamp(dev, &rxStartTime);
+  ///// Debug, to be removed
 
+
+  // dwGetReceiveTimestamp(dev, &timeOfLastReceivedPackage);
 
   lpsSwarmPacket_t txPacket;
-
-  if (timeOfLastSentPackage && timeOfLastReceivedPackage) {
-    txPacket.timeSinceLastSentPackage = 
-  }
   txPacket.sourceAddress = options->tagAddress;
   txPacket.processingTime = 69;
-
-  dwGetReceiveTimestamp(dev, &timeOfLastReceivedPackage);
-
 
   dwNewTransmit(dev);
   dwSetDefaults(dev);
   dwSetData(dev, (uint8_t*)&txPacket, sizeof(lpsSwarmPacket_t));
+
+  ///// Debug, to be removed
+  dwGetSystemTimestamp(dev, &rxEndTime);
+  ///// Debug, to be removed
 
   dwWaitForResponse(dev, true);
   dwStartTransmit(dev);
@@ -64,11 +85,15 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsSwarmPacket_t *packet, lpsAlgoOpt
 }
 
 static void txcallback(dwDevice_t *dev) {
-  DEBUG_PRINT("txcallback\n");
+  ///// Debug, to be removed
+  dwGetTransmitTimestamp(dev, &txTime);
 
-  dwGetTransmitTimestamp(dev, &timeOfLastSentPackage);
+  rxCallbackExecution = rxEndTime.low32 - rxStartTime.low32;
+  sendingDelay = txTime.low32 - rxEndTime.low32;
+  ///// Debug, to be removed
+
+  //dwGetTransmitTimestamp(dev, &timeOfLastSentPackage);
 }
-
 
 twrSwarmAlgorithm_t twrSwarmAlgorithm = {
   .init = init,
@@ -76,3 +101,8 @@ twrSwarmAlgorithm_t twrSwarmAlgorithm = {
   .rxcallback = rxcallback,
   .txcallback = txcallback
 };
+
+LOG_GROUP_START(twrSwarm)
+LOG_ADD(LOG_UINT32, rxCallback, &rxCallbackExecution)
+LOG_ADD(LOG_UINT32, sendingDelay, &sendingDelay)
+LOG_GROUP_STOP(twrSwarm)
