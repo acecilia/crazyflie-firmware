@@ -5,10 +5,16 @@
 #include "locodeck.h"
 
 typedef struct {
+  locoAddress_t address;
+  uint32_t time;
+} addressTimePair_t;
+
+typedef struct {
   locoAddress_t sourceAddress;
-  uint64_t timeSinceLastSentPackage;
-  uint64_t processingTime;
-  // uint8_t data[30];
+  uint32_t tx;
+
+  int rxLength;
+  addressTimePair_t rx[];
 } lpsSwarmPacket_t;
 
 typedef struct {
