@@ -1,24 +1,8 @@
 #include "TwrSwarmAlgorithm.h"
 
-#include "libdict.h"
 #include "debug.h" // To be removed?
 
-typedef struct {
-  // Values to calculate clockDrift
-  uint32_t localRx; // To be set after reception
-  uint32_t remoteTx; // To be set after reception
-
-  uint32_t tof; // To be set after reception
-} neighbourData_t;
-
-// This context struct contains all the required global values of the algorithm
-static struct ctx_s {
-  dict *dct;
-
-  // Values to calculate t_round
-  uint32_t localTx; // To be set after transmission
-} ctx;
-
+ctx_s ctx;
 
 // Time length of the preamble
 #define PREAMBLE_LENGTH_S ( 128 * 1017.63e-9 )
@@ -80,25 +64,63 @@ static dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   }
 
   return result;
-}
+}*/
 
-static neighbourData_t* getDataForNeighbour(dict* dct, locoAddress_t* address) {
-  void** search_result = dict_search(dct, address);
+static neighbourData_t* getDataForNeighbour(dict* dct, locoAddress_t address) {
+  void** search_result = dict_search(dct, &address);
   if (search_result) {
-    DEBUG_PRINT("Dict1");
-    return *(neighbourData_t **)search_result;
+    return (neighbourData_t *)*search_result;
   } else {
-    DEBUG_PRINT("Dict2");
+    locoAddress_t* key = pvPortMalloc(sizeof(locoAddress_t));
+    *key = address;
+
     neighbourData_t* data = pvPortMalloc(sizeof(neighbourData_t));
     data->localRx = 0;
     data->remoteTx = 0;
     data->tof = 0;
 
-    dict_insert_result insert_result = dict_insert(dct, address);
+    dict_insert_result insert_result = dict_insert(dct, key);
     *insert_result.datum_ptr = data;
     return data;
   }
-}*/
+}
+
+static unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoAddress_t sourceAddress, uint32_t localTx) {
+  // Packet creation
+  unsigned int rxLength = dict_count(dct);
+  unsigned int txPacketLength = sizeof(lpsSwarmPacket_t) + rxLength * sizeof(addressTimePair_t);
+
+  lpsSwarmPacket_t* txPacket = pvPortMalloc(txPacketLength);
+  *txPacketPointer = txPacket;
+  txPacket->sourceAddress = sourceAddress;
+  txPacket->tx = localTx;
+  txPacket->rxLength = rxLength;
+
+  if (rxLength > 0) {
+    // Get data from the dict and into the txPacket array
+    dict_itor *itor = dict_itor_new(dct);
+    dict_itor_first(itor);
+    for (int i = 0; i < rxLength; i++) {
+      locoAddress_t key = *(locoAddress_t*)dict_itor_key(itor);
+      neighbourData_t* data = (neighbourData_t*)*dict_itor_datum(itor);
+      addressTimePair_t pair = {
+        .address = key,
+        .time = data->localRx
+      };
+
+      ////////////
+      DEBUG_PRINT("****Send => address: %lld; time: %ld****\n", pair.address, pair.time);
+      ////////////
+
+      txPacket->rx[i] = pair;
+      dict_itor_next(itor);
+    }
+
+    dict_itor_free(itor);
+  }
+
+  return txPacketLength;
+}
 
 static void init() {
   configure_dict_malloc();
@@ -111,21 +133,14 @@ static void initiateRanging(dwDevice_t *dev) {
   dwNewTransmit(dev);
   dwWaitForResponse(dev, true);
   dwStartTransmit(dev);
-  // DEBUG_PRINT("i");
 }
 
-static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options) {
-  unsigned int dataLength = dwGetDataLength(dev);
-
-  // TODO: To be changed to (dataLength > 0)
+static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmPacket_t* rxPacket, unsigned int dataLength) {
   if (dataLength > 0) {
     // Process incoming package
 
-    lpsSwarmPacket_t* rxPacket = pvPortMalloc(dataLength);
-    dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
-
-    //neighbourData_t* neighbourData = getDataForNeighbour(ctx.dct, &rxPacket->sourceAddress);
-    //DEBUG_PRINT("neigh %ld", neighbourData->localRx);
+    neighbourData_t* neighbourData = getDataForNeighbour(ctx.dct, rxPacket->sourceAddress);
+    DEBUG_PRINT("neigh %ld", neighbourData->localRx);
 
     /*
     // Calculate Tof if the necessary data is available
@@ -167,30 +182,8 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options) {
     dwTime_t tx = findTransmitTimeAsSoonAsPossible(dev);
     uint32_t localTx = tx.low32;
 
-    // Packet creation
-    unsigned int rxLength = dict_count(ctx.dct);
-    unsigned int txPacketLength = sizeof(lpsSwarmPacket_t) + rxLength * sizeof(addressTimePair_t);
-
-    lpsSwarmPacket_t* txPacket = pvPortMalloc(txPacketLength);
-    txPacket->sourceAddress = options->tagAddress;
-    txPacket->tx = localTx;
-    txPacket->rxLength = rxLength;
-
-    if (rxLength > 0) {
-      // Get data from the dict and into the txPacket array
-      dict_itor *itor = dict_itor_new(ctx.dct);
-      dict_itor_first(itor);
-      for (int i = 0; i < rxLength; i++) {
-        addressTimePair_t pair = {
-          .address = *(locoAddress_t *)dict_itor_key(itor),
-          .time = *(uint32_t *)*dict_itor_datum(itor)
-        };
-        txPacket->rx[i] = pair;
-        dict_itor_next(itor);
-      }
-
-      dict_itor_free(itor);
-    }
+    lpsSwarmPacket_t* txPacket = NULL;
+    unsigned int txPacketLength = createTxPacket(&txPacket, ctx.dct, localTx, options->tagAddress);
 
     // Set data
     dwSetData(dev, (uint8_t*)txPacket, txPacketLength);
@@ -219,10 +212,13 @@ static void txcallback(dwDevice_t *dev) {
   // DEBUG_PRINT("txcallback\n");
 }
 
-
 twrSwarmAlgorithm_t twrSwarmAlgorithm = {
   .init = init,
   .initiateRanging = initiateRanging,
   .rxcallback = rxcallback,
-  .txcallback = txcallback
+  .txcallback = txcallback,
+
+  // Exposed for testing
+  .getDataForNeighbour = getDataForNeighbour,
+  .ctx = &ctx
 };

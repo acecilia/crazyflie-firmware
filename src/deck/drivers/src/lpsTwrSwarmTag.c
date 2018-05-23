@@ -127,7 +127,16 @@ static void txcallback(dwDevice_t *dev) {
 
 static uint32_t rxcallback(dwDevice_t *dev) {
   DEBUG_PRINT("rxc1\n");
-  return twrSwarmAlgorithm.rxcallback(dev, options);
+
+  int dataLength = dwGetDataLength(dev);
+  lpsSwarmPacket_t* rxPacket = NULL;
+
+  if (dataLength != 0) {
+    rxPacket = pvPortMalloc(dataLength);
+    dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
+  }
+
+  return twrSwarmAlgorithm.rxcallback(dev, options, rxPacket, dataLength);
 }
 
 static void initiateRanging(dwDevice_t *dev) {
@@ -227,6 +236,28 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
   dwCommitConfiguration(dev);
 
   rangingOk = false;
+
+  for(int i = 0; i < 5; i++) {
+    DEBUG_PRINT("\n\nRxcallback:\n");
+
+    ////////////
+    // Set new values on the dictionary
+    neighbourData_t* data = twrSwarmAlgorithm.getDataForNeighbour(twrSwarmAlgorithm.ctx->dct, 66);
+    data->localRx = data->localRx + 10;
+    data->remoteTx = 66;
+    data->tof = 66;
+
+    // Verify that the data is saved correctly
+    neighbourData_t* neighbourData = twrSwarmAlgorithm.getDataForNeighbour(twrSwarmAlgorithm.ctx->dct, 66);
+    if (neighbourData->localRx == data->localRx) {
+      DEBUG_PRINT("Ok: Data saved correctly");
+    } else {
+      DEBUG_PRINT("Error: expected data not found in dictionary");
+    }
+    ////////////
+
+    twrSwarmAlgorithm.rxcallback(dev, options, NULL, 0);
+  }
 }
 
 static bool isRangingOk()
