@@ -126,14 +126,8 @@ static void txcallback(dwDevice_t *dev) {
 }
 
 static uint32_t rxcallback(dwDevice_t *dev) {
-  // dwTime_t arival = { .full=0 };
-  int dataLength = dwGetDataLength(dev);
-  if (dataLength == 0) return 0;
-
-  lpsSwarmPacket_t rxPacket;
-  dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
-
-  return twrSwarmAlgorithm.rxcallback(dev, &rxPacket, options);
+  DEBUG_PRINT("rxc1\n");
+  return twrSwarmAlgorithm.rxcallback(dev, options);
 }
 
 static void initiateRanging(dwDevice_t *dev) {

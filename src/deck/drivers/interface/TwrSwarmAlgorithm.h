@@ -20,7 +20,7 @@ typedef struct {
 typedef struct {
   void (*init)(void);
   void (*initiateRanging)(dwDevice_t *dev);
-  uint32_t (*rxcallback)(dwDevice_t *dev, lpsSwarmPacket_t *packet, lpsAlgoOptions_t* options);
+  uint32_t (*rxcallback)(dwDevice_t *dev, lpsAlgoOptions_t* options);
   void (*txcallback)(dwDevice_t *dev);
 } twrSwarmAlgorithm_t;
 

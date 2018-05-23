@@ -4,9 +4,6 @@
 #include "debug.h" // To be removed?
 
 typedef struct {
-  // Values to calculate t_round
-  uint32_t localTx; // To be set after transmission
-
   // Values to calculate clockDrift
   uint32_t localRx; // To be set after reception
   uint32_t remoteTx; // To be set after reception
@@ -17,6 +14,9 @@ typedef struct {
 // This context struct contains all the required global values of the algorithm
 static struct ctx_s {
   dict *dct;
+
+  // Values to calculate t_round
+  uint32_t localTx; // To be set after transmission
 } ctx;
 
 
@@ -64,7 +64,7 @@ static dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   return transmitTime;
 }
 
-static double calculateClockCorrection(uint32_t prevRemoteTx, uint32_t remoteTx, uint32_t prevLocalRx, uint32_t localRx) {
+/*static double calculateClockCorrection(uint32_t prevRemoteTx, uint32_t remoteTx, uint32_t prevLocalRx, uint32_t localRx) {
   if (prevRemoteTx == 0 || remoteTx == 0 || prevLocalRx == 0 || localRx == 0) {
     return 1;
   }
@@ -82,14 +82,14 @@ static double calculateClockCorrection(uint32_t prevRemoteTx, uint32_t remoteTx,
   return result;
 }
 
-
 static neighbourData_t* getDataForNeighbour(dict* dct, locoAddress_t* address) {
   void** search_result = dict_search(dct, address);
   if (search_result) {
+    DEBUG_PRINT("Dict1");
     return *(neighbourData_t **)search_result;
   } else {
+    DEBUG_PRINT("Dict2");
     neighbourData_t* data = pvPortMalloc(sizeof(neighbourData_t));
-    data->localTx = 0;
     data->localRx = 0;
     data->remoteTx = 0;
     data->tof = 0;
@@ -98,7 +98,7 @@ static neighbourData_t* getDataForNeighbour(dict* dct, locoAddress_t* address) {
     *insert_result.datum_ptr = data;
     return data;
   }
-}
+}*/
 
 static void init() {
   configure_dict_malloc();
@@ -111,43 +111,53 @@ static void initiateRanging(dwDevice_t *dev) {
   dwNewTransmit(dev);
   dwWaitForResponse(dev, true);
   dwStartTransmit(dev);
-  DEBUG_PRINT("initiateRanging\n");
+  // DEBUG_PRINT("i");
 }
 
-static uint32_t rxcallback(dwDevice_t *dev, lpsSwarmPacket_t *packet, lpsAlgoOptions_t* options) {
-  DEBUG_PRINT("rxcallback: \n");
+static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options) {
+  unsigned int dataLength = dwGetDataLength(dev);
 
-  neighbourData_t* neighbourData = getDataForNeighbour(ctx.dct, &packet->sourceAddress);
+  // TODO: To be changed to (dataLength > 0)
+  if (dataLength > 0) {
+    // Process incoming package
 
-  // Calculate Tof if the necessary data is available
-  for(int i = 0; i < packet->rxLength; i++) {
-    if (packet->rx[i].address == options->tagAddress) { // To be executed only once
-      dwTime_t rx = { .full = 0 };
-      dwGetReceiveTimestamp(dev, &rx);
+    lpsSwarmPacket_t* rxPacket = pvPortMalloc(dataLength);
+    dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
 
-      // Remote values
-      uint32_t remoteRx = packet->rx[i].time;
-      uint32_t remoteTx = packet->tx;
-      uint32_t prevRemoteTx = neighbourData->remoteTx;
+    //neighbourData_t* neighbourData = getDataForNeighbour(ctx.dct, &rxPacket->sourceAddress);
+    //DEBUG_PRINT("neigh %ld", neighbourData->localRx);
 
-      // Local values
-      uint32_t localRx = rx.low32;
-      uint32_t localTx = neighbourData->localTx;
-      uint32_t prevLocalRx = neighbourData->localRx;
+    /*
+    // Calculate Tof if the necessary data is available
+    for(int i = 0; i < rxPacket->rxLength; i++) {
+      if (rxPacket->rx[i].address == options->tagAddress) { // To be executed only once
+        dwTime_t rx = { .full = 0 };
+        dwGetReceiveTimestamp(dev, &rx);
 
-      // Calculations
-      uint32_t remoteReply = remoteTx - remoteRx;
-      double clockCorrection = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
-      uint32_t localReply = remoteReply * clockCorrection;
+        // Remote values
+        uint32_t remoteRx = rxPacket->rx[i].time;
+        uint32_t remoteTx = rxPacket->tx;
+        uint32_t prevRemoteTx = neighbourData->remoteTx;
 
-      uint32_t localRound = localRx - localTx;
-      neighbourData->tof = (localRound - localReply) / 2;
+        // Local values
+        uint32_t localRx = rx.low32;
+        uint32_t localTx = ctx.localTx;
+        uint32_t prevLocalRx = neighbourData->localRx;
 
-      // Set historic
-      neighbourData->remoteTx = remoteTx;
-      neighbourData->localRx = localRx;
-      break;
-    }
+        // Calculations
+        uint32_t remoteReply = remoteTx - remoteRx;
+        double clockCorrection = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
+        uint32_t localReply = remoteReply * clockCorrection;
+
+        uint32_t localRound = localRx - localTx;
+        neighbourData->tof = (localRound - localReply) / 2;
+
+        // Set historic
+        neighbourData->remoteTx = remoteTx;
+        neighbourData->localRx = localRx;
+        break;
+      }
+    }*/
   }
 
   if (true) {
@@ -156,40 +166,45 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsSwarmPacket_t *packet, lpsAlgoOpt
     // Local values
     dwTime_t tx = findTransmitTimeAsSoonAsPossible(dev);
     uint32_t localTx = tx.low32;
-    unsigned int rxLength = dict_count(ctx.dct);
 
     // Packet creation
-    lpsSwarmPacket_t* txPacket = pvPortMalloc(sizeof(lpsSwarmPacket_t) + rxLength * sizeof(addressTimePair_t));
+    unsigned int rxLength = dict_count(ctx.dct);
+    unsigned int txPacketLength = sizeof(lpsSwarmPacket_t) + rxLength * sizeof(addressTimePair_t);
+
+    lpsSwarmPacket_t* txPacket = pvPortMalloc(txPacketLength);
     txPacket->sourceAddress = options->tagAddress;
     txPacket->tx = localTx;
     txPacket->rxLength = rxLength;
 
-    // Get data from the dict and into the txPacket array
-    dict_itor *itor = dict_itor_new(ctx.dct);
-    dict_itor_first(itor);
-    for (int i = 0; i < rxLength && dict_itor_valid(itor); dict_itor_next(itor), i++) {
-      addressTimePair_t pair = {
-        .address = *(locoAddress_t *)dict_itor_key(itor),
-        .time = *(uint32_t *)*dict_itor_datum(itor)
-      };
-      txPacket->rx[i] = pair;
+    if (rxLength > 0) {
+      // Get data from the dict and into the txPacket array
+      dict_itor *itor = dict_itor_new(ctx.dct);
+      dict_itor_first(itor);
+      for (int i = 0; i < rxLength; i++) {
+        addressTimePair_t pair = {
+          .address = *(locoAddress_t *)dict_itor_key(itor),
+          .time = *(uint32_t *)*dict_itor_datum(itor)
+        };
+        txPacket->rx[i] = pair;
+        dict_itor_next(itor);
+      }
+
+      dict_itor_free(itor);
     }
 
     // Set data
-    dwSetData(dev, (uint8_t*)txPacket, sizeof(lpsSwarmPacket_t) + rxLength * sizeof(addressTimePair_t));
+    dwSetData(dev, (uint8_t*)txPacket, txPacketLength);
+    vPortFree(txPacket);
 
     dwNewTransmit(dev);
     dwSetDefaults(dev);
     dwSetTxRxTime(dev, tx);
 
+    dwWaitForResponse(dev, true);
     dwStartTransmit(dev);
 
     // Set historic
-    neighbourData->localTx = localTx;
-
-    // Free used memory
-    dict_itor_free(itor);
-    vPortFree(txPacket);
+    ctx.localTx = localTx;
   } else {
     // Has to wait for the next neighbour
     dwNewReceive(dev);
@@ -201,7 +216,7 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsSwarmPacket_t *packet, lpsAlgoOpt
 }
 
 static void txcallback(dwDevice_t *dev) {
-  DEBUG_PRINT("txcallback\n");
+  // DEBUG_PRINT("txcallback\n");
 }
 
 
