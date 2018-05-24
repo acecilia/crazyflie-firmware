@@ -1,8 +1,6 @@
 #include "TwrSwarmAlgorithm.h"
 #include "TwrSwarmAlgorithmBlocks.h"
 
-#include "debug.h" // To be removed?
-
 ctx_s ctx;
 
 static void init() {

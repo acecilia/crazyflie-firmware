@@ -4,7 +4,6 @@
 
 #include "libdict.h"
 #include "FreeRTOS.h"
-#include "debug.h"
 
 /**
  Make the library use the malloc and free functions from freeRTOS. Necessary to call this function once before using anything from the library

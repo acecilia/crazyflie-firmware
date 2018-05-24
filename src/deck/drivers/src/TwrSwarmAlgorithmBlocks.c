@@ -1,7 +1,5 @@
 #include "TwrSwarmAlgorithmBlocks.h"
 
-#include "debug.h" // To be removed?
-
 // Time length of the preamble
 #define PREAMBLE_LENGTH_S ( 128 * 1017.63e-9 )
 #define PREAMBLE_LENGTH (uint64_t)( PREAMBLE_LENGTH_S * 499.2e6 * 128 )
@@ -13,7 +11,7 @@
 #define TDMA_EXTRA_LENGTH_S ( 300e-6 )
 #define TDMA_EXTRA_LENGTH (uint64_t)( TDMA_EXTRA_LENGTH_S * 499.2e6 * 128 )
 
-// Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0
+// Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0, and round the result up
 uint32_t adjustTxRxTime(dwTime_t *time) {
   uint32_t added = (1<<9) - (time->low32 & ((1<<9)-1));
 
@@ -98,17 +96,13 @@ unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoA
     // Get data from the dict and into the txPacket array
     dict_itor *itor = dict_itor_new(dct);
     dict_itor_first(itor);
-    for (int i = 0; i < rxLength; i++) {
+    for (unsigned int i = 0; i < rxLength; i++) {
       locoAddress_t key = *(locoAddress_t*)dict_itor_key(itor);
       neighbourData_t* data = (neighbourData_t*)*dict_itor_datum(itor);
       addressTimePair_t pair = {
         .address = key,
         .time = data->localRx
       };
-
-      ////////////
-      DEBUG_PRINT("****Send => address: %lld; time: %ld****\n", pair.address, pair.time);
-      ////////////
 
       txPacket->rx[i] = pair;
       dict_itor_next(itor);
