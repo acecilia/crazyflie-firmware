@@ -7,7 +7,7 @@ static void init() {
   configure_dict_malloc();
 
   // Initialize the dictionary storing the rangings
-  ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10);
+  ctx.dct = hashtable2_dict_new(dict_uint64_cmp, dict_uint64_hash, 10);
 }
 
 static void initiateRanging(dwDevice_t *dev) {
@@ -20,10 +20,11 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmP
   if (dataLength > 0) {
     // Process incoming package
 
-    neighbourData_t* neighbourData = getDataForNeighbour(ctx.dct, rxPacket->sourceAddress);
-    DEBUG_PRINT("neigh %ld", neighbourData->localRx);
+    // neighbourData_t* neighbourData = getDataForNeighbour(ctx.dct, rxPacket->sourceAddress);
 
-    /*
+    /*DEBUG_PRINT("neigh %ld", neighbourData->localRx);
+
+
     // Calculate Tof if the necessary data is available
     for(int i = 0; i < rxPacket->rxLength; i++) {
       if (rxPacket->rx[i].address == options->tagAddress) { // To be executed only once
