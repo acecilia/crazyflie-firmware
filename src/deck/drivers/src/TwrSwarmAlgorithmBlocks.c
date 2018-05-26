@@ -44,23 +44,23 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   return transmitTime;
 }
 
-/*double calculateClockCorrection(uint32_t prevRemoteTx, uint32_t remoteTx, uint32_t prevLocalRx, uint32_t localRx) {
- if (prevRemoteTx == 0 || remoteTx == 0 || prevLocalRx == 0 || localRx == 0) {
- return 1;
- }
+double calculateClockCorrection(uint32_t prevRemoteTx, uint32_t remoteTx, uint32_t prevLocalRx, uint32_t localRx) {
+  if (prevRemoteTx == 0 || remoteTx == 0 || prevLocalRx == 0 || localRx == 0) {
+    return 1;
+  }
 
- double result = 1;
+  double result = 1;
 
- // Assigning to uint32_t truncates the diffs and takes care of wrapping clocks
- uint32_t tickCountRemote = remoteTx - prevRemoteTx;
- uint32_t tickCountLocal = localRx - prevLocalRx;
+  // Assigning to uint32_t truncates the diffs and takes care of wrapping clocks
+  uint32_t tickCountRemote = remoteTx - prevRemoteTx;
+  uint32_t tickCountLocal = localRx - prevLocalRx;
 
- if (tickCountRemote != 0) {
- result = (double)tickCountLocal / (double)tickCountRemote;
- }
+  if (tickCountRemote != 0) {
+    result = (double)tickCountLocal / (double)tickCountRemote;
+  }
 
- return result;
- }*/
+  return result;
+}
 
 neighbourData_t* getDataForNeighbour(dict* dct, locoAddress_t address) {
   void** search_result = dict_search(dct, &address);

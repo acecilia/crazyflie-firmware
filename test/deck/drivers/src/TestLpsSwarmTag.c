@@ -38,3 +38,95 @@ void testAdjustTxRxTime() {
   TEST_ASSERT_EQUAL_UINT32(expectedValue, time.low32);
   TEST_ASSERT_EQUAL_UINT32(expectedAdded, added);
 }
+
+void testFindTransmitTimeAsSoonAsPossible() {
+  dwTime_t initialValue = { .full = 0 };
+  dwTime_t expectedValue = { .full = 27556352 };
+
+  dwDevice_t dev;
+  dwGetSystemTimestamp_Expect(&dev, &initialValue);
+
+  dwTime_t time = findTransmitTimeAsSoonAsPossible(&dev);
+  
+  TEST_ASSERT_EQUAL_UINT64(expectedValue.full, time.full);
+}
+
+void testCalculateClockCorrectionWithValidInputData() {
+  double expectedClockCorrection = 1.005;
+
+  // Remote values
+  uint32_t prevRemoteTx = 1000;
+  uint32_t remoteTx = 2000;
+
+  // Local clock running at slightly different frequency as remote
+  uint32_t prevLocalRx = prevRemoteTx * expectedClockCorrection;
+  uint32_t localRx = remoteTx * expectedClockCorrection;
+
+  double result = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
+
+  TEST_ASSERT_EQUAL_UINT32(expectedClockCorrection, result);
+}
+
+/**
+ Simulates that this is the first package coming, and there is no previous data: prevRemoteTx = 0 and prevLocalRx = 0
+ */
+void testCalculateClockCorrectionWithInvalidInputData() {
+  double clockCorrection = 1.005;
+  double expectedClockCorrection = 1; // Clock correction can not be calculated without prevRemoteTx and prevLocalRx, so the clock correction should report no frequency difference between local and remote clocks
+
+  // Remote values
+  uint32_t prevRemoteTx = 0;
+  uint32_t remoteTx = 2000;
+
+  // Local clock running at slightly different frequency as remote
+  uint32_t prevLocalRx = 0;
+  uint32_t localRx = remoteTx * clockCorrection;
+
+  double result = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
+
+  TEST_ASSERT_EQUAL_UINT32(expectedClockCorrection, result);
+}
+
+/**
+ Add an entry to the dictionary
+ */
+static void fillDictionary(dict* dct, locoAddress_t address, neighbourData_t data) {
+  neighbourData_t* result = getDataForNeighbour(dct, address);
+  *result = data;
+}
+
+void testGetDataForNeighbourWithEmptyDictionary() {
+  dict* dct = hashtable2_dict_new(dict_uint64_cmp, dict_uint64_hash, 10);
+
+  neighbourData_t* result = getDataForNeighbour(dct, 1);
+
+  TEST_ASSERT_EQUAL_UINT32(0, result->localRx);
+  TEST_ASSERT_EQUAL_UINT32(0, result->remoteTx);
+  TEST_ASSERT_EQUAL_UINT32(0, result->tof);
+}
+
+void testGetDataForNeighbourWithFilledDictionary() {
+  dict* dct = hashtable2_dict_new(dict_uint64_cmp, dict_uint64_hash, 10);
+  neighbourData_t initialData = { .localRx = 1, .remoteTx = 2, .tof = 3 };
+
+  fillDictionary(dct, 1, initialData);
+  neighbourData_t* result = getDataForNeighbour(dct, 1);
+
+  TEST_ASSERT_EQUAL_UINT32(initialData.localRx, result->localRx);
+  TEST_ASSERT_EQUAL_UINT32(initialData.remoteTx, result->remoteTx);
+  TEST_ASSERT_EQUAL_UINT32(initialData.tof, result->tof);
+  TEST_ASSERT_NOT_EQUAL(&initialData, result);
+}
+
+void testGetDataForNeighbourWithFilledDictionaryAndDifferentKeys() {
+  dict* dct = hashtable2_dict_new(dict_uint64_cmp, dict_uint64_hash, 10);
+  neighbourData_t initialData = { .localRx = 1, .remoteTx = 2, .tof = 3 };
+
+  fillDictionary(dct, 1, initialData);
+  neighbourData_t* result = getDataForNeighbour(dct, 2);
+
+  TEST_ASSERT_NOT_EQUAL(initialData.localRx, result->localRx);
+  TEST_ASSERT_NOT_EQUAL(initialData.remoteTx, result->remoteTx);
+  TEST_ASSERT_NOT_EQUAL(initialData.tof, result->tof);
+  TEST_ASSERT_NOT_EQUAL(&initialData, result);
+}
