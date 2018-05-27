@@ -20,7 +20,7 @@ typedef struct {
   locoAddress_t sourceAddress;
   uint32_t tx;
 
-  int rxLength;
+  uint32_t rxLength;
   addressTimePair_t rx[];
 } lpsSwarmPacket_t;
 

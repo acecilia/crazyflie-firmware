@@ -21,6 +21,38 @@
 #include "dw1000Mocks.h"
 #include "freertosMocks.h"
 
+// Test helper functions
+
+/**
+ Create a dictionary. Used for avoiding code duplication
+ */
+static dict* testCreateTestDictionary() {
+  return hashtable2_dict_new(dict_uint64_cmp, dict_uint64_hash, 10);
+}
+
+/**
+ Add an entry to the dictionary
+ */
+static void testFillDictionary(dict* dct, locoAddress_t address, neighbourData_t data) {
+  neighbourData_t* result = getDataForNeighbour(dct, address);
+  *result = data;
+}
+
+/**
+ A function to find a pair inside the payload of a packet. Needed because when passing the dictionary data to an array, there order is not specified
+ */
+static addressTimePair_t* testFindPairInPayload(lpsSwarmPacket_t* packet, locoAddress_t address) {
+
+  for (unsigned int i = 0; i < packet->rxLength; i++) {
+    if (packet->rx[i].address == address) {
+      return &packet->rx[i];
+    }
+  }
+  return NULL;
+}
+
+// Tests
+
 void setUp(void) {
 }
 
@@ -87,16 +119,8 @@ void testCalculateClockCorrectionWithInvalidInputData() {
   TEST_ASSERT_EQUAL_UINT32(expectedClockCorrection, result);
 }
 
-/**
- Add an entry to the dictionary
- */
-static void fillDictionary(dict* dct, locoAddress_t address, neighbourData_t data) {
-  neighbourData_t* result = getDataForNeighbour(dct, address);
-  *result = data;
-}
-
 void testGetDataForNeighbourWithEmptyDictionary() {
-  dict* dct = hashtable2_dict_new(dict_uint64_cmp, dict_uint64_hash, 10);
+  dict* dct = testCreateTestDictionary();
 
   neighbourData_t* result = getDataForNeighbour(dct, 1);
 
@@ -106,10 +130,10 @@ void testGetDataForNeighbourWithEmptyDictionary() {
 }
 
 void testGetDataForNeighbourWithFilledDictionary() {
-  dict* dct = hashtable2_dict_new(dict_uint64_cmp, dict_uint64_hash, 10);
+  dict* dct = testCreateTestDictionary();
   neighbourData_t initialData = { .localRx = 1, .remoteTx = 2, .tof = 3 };
 
-  fillDictionary(dct, 1, initialData);
+  testFillDictionary(dct, 1, initialData);
   neighbourData_t* result = getDataForNeighbour(dct, 1);
 
   TEST_ASSERT_EQUAL_UINT32(initialData.localRx, result->localRx);
@@ -119,14 +143,59 @@ void testGetDataForNeighbourWithFilledDictionary() {
 }
 
 void testGetDataForNeighbourWithFilledDictionaryAndDifferentKeys() {
-  dict* dct = hashtable2_dict_new(dict_uint64_cmp, dict_uint64_hash, 10);
+  dict* dct = testCreateTestDictionary();
   neighbourData_t initialData = { .localRx = 1, .remoteTx = 2, .tof = 3 };
 
-  fillDictionary(dct, 1, initialData);
+  testFillDictionary(dct, 1, initialData);
   neighbourData_t* result = getDataForNeighbour(dct, 2);
 
   TEST_ASSERT_NOT_EQUAL(initialData.localRx, result->localRx);
   TEST_ASSERT_NOT_EQUAL(initialData.remoteTx, result->remoteTx);
   TEST_ASSERT_NOT_EQUAL(initialData.tof, result->tof);
   TEST_ASSERT_NOT_EQUAL(&initialData, result);
+}
+
+void testCreateTxPacketWithoutPayload() {
+  dict* dct = testCreateTestDictionary();
+  uint32_t localTx = 12345;
+  locoAddress_t sourceAddress = 6;
+
+  // Create package
+  lpsSwarmPacket_t* txPacket = NULL;
+  unsigned int txPacketLength = createTxPacket(&txPacket, dct, sourceAddress, localTx);
+
+  unsigned int expectedTxPacketLength = sizeof(lpsSwarmPacket_t);
+
+  TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
+  TEST_ASSERT_EQUAL_UINT64(sourceAddress, txPacket->sourceAddress);
+  TEST_ASSERT_EQUAL_UINT32(localTx, txPacket->tx);
+  TEST_ASSERT_EQUAL_UINT32(0, txPacket->rxLength);
+}
+
+void testCreateTxPacketWithPayload() {
+  dict* dct = testCreateTestDictionary();
+  uint32_t localTx = 12345;
+  locoAddress_t sourceAddress = 6;
+
+  // Fill dictionary
+  unsigned int elementsCount = 5;
+  for (unsigned int i = 0; i < elementsCount; i++) {
+    neighbourData_t data = { .localRx = i, .remoteTx = i + 1, .tof = i + 2 };
+    testFillDictionary(dct, i, data);
+  }
+  unsigned int expectedTxPacketLength = sizeof(lpsSwarmPacket_t) + elementsCount * sizeof(addressTimePair_t);
+
+  // Create package
+  lpsSwarmPacket_t* txPacket = NULL;
+  unsigned int txPacketLength = createTxPacket(&txPacket, dct, sourceAddress, localTx);
+
+  TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
+  TEST_ASSERT_EQUAL_UINT64(sourceAddress, txPacket->sourceAddress);
+  TEST_ASSERT_EQUAL_UINT32(localTx, txPacket->tx);
+  TEST_ASSERT_EQUAL_UINT32(elementsCount, txPacket->rxLength);
+  for (unsigned int i = 0; i < elementsCount; i++) {
+    addressTimePair_t* pair = testFindPairInPayload(txPacket, i);
+    TEST_ASSERT_EQUAL_UINT64(i, pair->address);
+    TEST_ASSERT_EQUAL_UINT32(i, pair->time);
+  }
 }
