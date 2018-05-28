@@ -237,7 +237,7 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 
   rangingOk = false;
 
-  for(int i = 0; i < 5; i++) {
+  /*for(int i = 0; i < 5; i++) {
     DEBUG_PRINT("\n\nRxcallback:\n");
 
     ////////////
@@ -257,7 +257,7 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
     ////////////
 
     twrSwarmAlgorithm.rxcallback(dev, options, NULL, 0);
-  }
+  }*/
 }
 
 static bool isRangingOk()

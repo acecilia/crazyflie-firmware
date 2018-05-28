@@ -50,10 +50,6 @@ typedef struct {
   void (*initiateRanging)(dwDevice_t *dev);
   uint32_t (*rxcallback)(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmPacket_t* rxPacket, unsigned int dataLength);
   void (*txcallback)(dwDevice_t *dev);
-
-  // Exposed for testing
-  neighbourData_t* (*getDataForNeighbour)(dict* dct, locoAddress_t address);
-  ctx_s* ctx;
 } twrSwarmAlgorithm_t;
 
 extern twrSwarmAlgorithm_t twrSwarmAlgorithm;

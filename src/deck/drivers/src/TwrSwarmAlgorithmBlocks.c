@@ -113,3 +113,37 @@ unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoA
 
   return txPacketLength;
 }
+
+void processRxPacket(dwDevice_t *dev, locoAddress_t ownAddress, lpsSwarmPacket_t* rxPacket, ctx_s* ctx) {
+  for(int i = 0; i < rxPacket->rxLength; i++) {
+    if (rxPacket->rx[i].address == ownAddress) { // To be executed only once
+      dwTime_t rx = { .full = 0 };
+      dwGetReceiveTimestamp(dev, &rx);
+
+      neighbourData_t* neighbourData = getDataForNeighbour(ctx->dct, rxPacket->sourceAddress);
+
+      // Remote values
+      uint32_t remoteRx = rxPacket->rx[i].time;
+      uint32_t remoteTx = rxPacket->tx;
+      uint32_t prevRemoteTx = neighbourData->remoteTx;
+
+      // Local values
+      uint32_t localRx = rx.low32;
+      uint32_t localTx = ctx->localTx;
+      uint32_t prevLocalRx = neighbourData->localRx;
+
+      // Calculations
+      uint32_t remoteReply = remoteTx - remoteRx;
+      double clockCorrection = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
+      uint32_t localReply = remoteReply * clockCorrection;
+
+      uint32_t localRound = localRx - localTx;
+      neighbourData->tof = (localRound - localReply) / 2;
+
+      // Set historic
+      neighbourData->remoteTx = remoteTx;
+      neighbourData->localRx = localRx;
+      break;
+    }
+  }
+}

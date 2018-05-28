@@ -79,5 +79,6 @@ colour: true
     - :ignore
     - :array
     - :callback
+    - :return_thru_ptr
   :mock_path: *mocks_path
   :mock_prefix: mock_
