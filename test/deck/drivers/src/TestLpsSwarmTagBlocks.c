@@ -192,6 +192,7 @@ void testCreateTxPacketWithPayload() {
   lpsSwarmPacket_t* txPacket = NULL;
   unsigned int txPacketLength = createTxPacket(&txPacket, dct, sourceAddress, localTx);
 
+  // Verify result
   TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
   TEST_ASSERT_EQUAL_UINT64(sourceAddress, txPacket->sourceAddress);
   TEST_ASSERT_EQUAL_UINT32(localTx, txPacket->tx);
@@ -209,7 +210,7 @@ void testProcessRxPacket() {
   // * remoteRx = (localTx + tof) / clockCorrection <--- localTx = prevlocalRx + localReply
   // * remoteTx = remoteRx + remoteReply            ---> localRx = (2 * remoteTx) + tof
 
-  // Expected values (giving them pair values we ensure proper integer operations: division and multiplication)
+  // Expected values: giving them pair values we ensure proper integer operations (mainly division) when calculating the actual values
   uint32_t tof = 4;             // Tof meassured by local clock
   uint32_t clockCorrection = 2; // Local clock works <clockCorrection> times faster than remote clock
   uint32_t localReply = 4;      // Local reply time meassured by local clock

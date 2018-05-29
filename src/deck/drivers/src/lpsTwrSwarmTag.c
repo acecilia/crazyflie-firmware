@@ -54,34 +54,7 @@ static uint8_t performanceRate = 0;
 static uint16_t succededRangingCounter = 0;
 static uint16_t failedRangingCounter = 0;
 
-#define INDEX 1
-
-/*
-// Timestamps for ranging
-static dwTime_t poll_tx;
-static dwTime_t poll_rx;
-static dwTime_t answer_tx;
-static dwTime_t answer_rx;
-static dwTime_t final_tx;
-static dwTime_t final_rx;
-*/
-
 static lpsAlgoOptions_t* options;
-/*
-static packet_t txPacket;
-
-static volatile uint8_t curr_seq = 0;
-static int current_anchor = 0;
-
-static bool ranging_complete = false;
-static bool lpp_transaction = false;
-
-static lpsLppShortPacket_t lppShortPacket;
-
-// TDMA handling
-static bool tdmaSynchronized;
-*/
-
 static bool rangingOk;
 
 // Additions
@@ -126,6 +99,7 @@ static void txcallback(dwDevice_t *dev) {
 }
 
 static uint32_t rxcallback(dwDevice_t *dev) {
+  /*
   DEBUG_PRINT("rxc1\n");
 
   int dataLength = dwGetDataLength(dev);
@@ -137,29 +111,19 @@ static uint32_t rxcallback(dwDevice_t *dev) {
   }
 
   return twrSwarmAlgorithm.rxcallback(dev, options, rxPacket, dataLength);
+  */
+
+  return MAX_TIMEOUT;
 }
 
 static void initiateRanging(dwDevice_t *dev) {
   twrSwarmAlgorithm.initiateRanging(dev);
-  
-  /* Previous implementation, to use as a guide
-  dwIdle(dev);
-
-  txPacket.payload[LPS_TWR_TYPE] = LPS_TWR_POLL;
-  txPacket.payload[LPS_TWR_SEQ] = ++curr_seq;
-  txPacket.sourceAddress = options->tagAddress;
-  txPacket.destAddress = options->anchorAddress[current_anchor];
-
-  dwNewTransmit(dev);
-  dwSetDefaults(dev);
-  dwSetData(dev, (uint8_t*)&txPacket, MAC802154_HEADER_LENGTH+2);
-  dwWaitForResponse(dev, true);
-  dwStartTransmit(dev);
-  */
 }
 
 static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 {
+  blink(LED_BLUE_L);
+
   static uint32_t statisticStartTick = 0;
 
   if (statisticStartTick == 0) {
@@ -168,20 +132,17 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 
   switch(event) {
     case eventPacketReceived:
-      blink(LED_RED_L);
+      blink(LED_GREEN_L);
       succededRangingCounter++;
       return rxcallback(dev);
       break;
     case eventPacketSent:
       txcallback(dev);
-
       return MAX_TIMEOUT;
       break;
     case eventTimeout:  // Comes back to timeout after each ranging attempt
-      failedRangingCounter++;
-      blink(LED_BLUE_L);
+      blink(LED_RED_L);
       initiateRanging(dev); // Added
-
       return MAX_TIMEOUT;
       break;
     case eventReceiveTimeout:
@@ -204,37 +165,9 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
   // Initialize the logging timer
   logTimer = xTimerCreate("loggingTimer", M2T(1000), pdTRUE, NULL, logTimerCallback);
   xTimerStart(logTimer, 0);
-  
-  // Initialize the packet in the TX buffer
-  // memset(&txPacket, 0, sizeof(txPacket));
-  // MAC80215_PACKET_INIT(txPacket, MAC802154_TYPE_DATA);
-  // txPacket.pan = 0xbccf;
-
-  /*
-  memset(&poll_tx, 0, sizeof(poll_tx));
-  memset(&poll_rx, 0, sizeof(poll_rx));
-  memset(&answer_tx, 0, sizeof(answer_tx));
-  memset(&answer_rx, 0, sizeof(answer_rx));
-  memset(&final_tx, 0, sizeof(final_tx));
-  memset(&final_rx, 0, sizeof(final_rx));
-
-  curr_seq = 0;
-  current_anchor = 0;
-
-  options->rangingState = 0;
-  ranging_complete = false;
-
-  tdmaSynchronized = false;
-  */
-
-  memset(algoOptions->distance, 0, sizeof(algoOptions->distance));
-  memset(algoOptions->pressures, 0, sizeof(algoOptions->pressures));
-  memset(algoOptions->failedRanging, 0, sizeof(algoOptions->failedRanging));
 
   dwSetReceiveWaitTimeout(dev, TWR_RECEIVE_TIMEOUT);
-
   dwCommitConfiguration(dev);
-
   rangingOk = false;
 
   /*for(int i = 0; i < 5; i++) {
