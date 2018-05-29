@@ -19,7 +19,7 @@ static void initiateRanging(dwDevice_t *dev) {
 
 static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmPacket_t* rxPacket, unsigned int dataLength) {
   if (dataLength > 0) {
-    processRxPacket(dev, options->tagAddress, rxPacket, &ctx);
+    processRxPacket(dev, options->tagAddress, rxPacket, ctx.dct, ctx.localTx);
   }
 
   if (true) {

@@ -207,7 +207,7 @@ void testCreateTxPacketWithPayload() {
   }
 }
 
-void testProcessRxPacket() {
+void testProcessRxPacketWithPayload() {
   // Event timestamps:
   // * prevRemoteTx                                 ---> prevlocalRx = (clockCorrection * prevRemoteTx) + tof
   // * remoteRx = (localTx + tof) / clockCorrection <--- localTx = prevlocalRx + localReply
@@ -219,7 +219,7 @@ void testProcessRxPacket() {
   uint32_t localReply = 4 * 10000;                      // Local reply time meassured by local clock
   uint32_t remoteReply = localReply / clockCorrection;  // Remote reply time meassured by Remote clock
 
-  // Actual values
+  // Timestamp values
   uint64_t prevRemoteTx = 20500;
   uint64_t prevlocalRx = (clockCorrection * prevRemoteTx) + tof;
   uint64_t localTx = prevlocalRx + localReply;
@@ -228,17 +228,14 @@ void testProcessRxPacket() {
   uint64_t localRx = (clockCorrection * remoteTx) + tof;
 
   //Addresses
-  locoAddress_t sourceAddress = 5;
-  locoAddress_t ownAddress = 6;
+  locoAddress_t remoteAddress = 5;
+  locoAddress_t localAddress = 6;
 
-  // Create the context
-  ctx_s ctx = {
-    .dct = testCreateTestDictionary(),
-    .localTx = localTx
-  };
+  // Create the dictionary
+  dict* dct = testCreateTestDictionary();
 
   // Set previous data
-  neighbourData_t* prevNeighbourData = getDataForNeighbour(ctx.dct, sourceAddress);
+  neighbourData_t* prevNeighbourData = getDataForNeighbour(dct, remoteAddress);
   prevNeighbourData->remoteTx = prevRemoteTx;
   prevNeighbourData->localRx = prevlocalRx;
 
@@ -253,22 +250,58 @@ void testProcessRxPacket() {
 
   // Create and fill rxPacket
   lpsSwarmPacket_t* rxPacket = pvPortMalloc(sizeof(lpsSwarmPacket_t) + 1 * sizeof(addressTimePair_t));
-  rxPacket->sourceAddress = sourceAddress;
+  rxPacket->sourceAddress = remoteAddress;
   rxPacket->tx = remoteTx;
   rxPacket->rxLength = 1;
   addressTimePair_t pair = {
-    .address = ownAddress,
+    .address = localAddress,
     .time = remoteRx
   };
   rxPacket->rx[0] = pair;
 
   // Test
-  processRxPacket(&dummyDev, ownAddress, rxPacket, &ctx);
+  processRxPacket(&dummyDev, localAddress, rxPacket, dct, localTx);
 
   // Verify result
-  neighbourData_t* currentNeighbourData = getDataForNeighbour(ctx.dct, sourceAddress);
+  neighbourData_t* currentNeighbourData = getDataForNeighbour(dct, remoteAddress);
   TEST_ASSERT_EQUAL_UINT64(remoteTx, currentNeighbourData->remoteTx);
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
   TEST_ASSERT_EQUAL_UINT32(tof - 1, currentNeighbourData->tof); // The -1 is required, because in the conversion between double and integer the system cuts the number down
 }
 
+void testProcessRxPacketWithoutPayload() {
+  // Timestamp values
+  uint64_t localRx = 12345;
+  uint64_t remoteTx = 23456;
+
+  //Addresses
+  locoAddress_t remoteAddress = 5;
+  locoAddress_t localAddress = 6;
+
+  // Create the dictionary
+  dict* dct = testCreateTestDictionary();
+
+  // Setup the mock in charge of generating localRx
+  dwTime_t localRxTimeStamp = { .full = localRx };
+  dwDevice_t dummyDev;
+  dwTime_t dummyValue;
+  dwGetReceiveTimestamp_Expect(&dummyDev, &dummyValue);
+  dwGetReceiveTimestamp_IgnoreArg_dev();
+  dwGetReceiveTimestamp_IgnoreArg_time();
+  dwGetReceiveTimestamp_ReturnThruPtr_time(&localRxTimeStamp);
+
+  // Create and fill rxPacket
+  lpsSwarmPacket_t* rxPacket = pvPortMalloc(sizeof(lpsSwarmPacket_t));
+  rxPacket->sourceAddress = remoteAddress;
+  rxPacket->tx = remoteTx;
+  rxPacket->rxLength = 0;
+
+  // Test
+  uint64_t dummyLocalTx = 9999; // Not needed, as localTx is only used when there is payload
+  processRxPacket(&dummyDev, localAddress, rxPacket, dct, dummyLocalTx);
+
+  // Verify result
+  neighbourData_t* currentNeighbourData = getDataForNeighbour(dct, remoteAddress);
+  TEST_ASSERT_EQUAL_UINT64(remoteTx, currentNeighbourData->remoteTx);
+  TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
+}

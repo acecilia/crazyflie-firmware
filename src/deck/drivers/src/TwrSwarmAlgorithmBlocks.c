@@ -126,26 +126,26 @@ unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoA
   return txPacketLength;
 }
 
-void processRxPacket(dwDevice_t *dev, locoAddress_t ownAddress, lpsSwarmPacket_t* rxPacket, ctx_s* ctx) {
+void processRxPacket(dwDevice_t *dev, locoAddress_t ownAddress, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t localTx) {
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
-  neighbourData_t* neighbourData = getDataForNeighbour(ctx->dct, rxPacket->sourceAddress);
+  neighbourData_t* neighbourData = getDataForNeighbour(dct, rxPacket->sourceAddress);
 
-  // Remote values
+  // Timestamp remote values
   uint64_t remoteTx = rxPacket->tx;
 
-  // Local values
+  // Timestamp local values
   uint64_t localRx = rxTimestamp.full;
 
   for(int i = 0; i < rxPacket->rxLength; i++) {
     if (rxPacket->rx[i].address == ownAddress) { // To be executed only once
 
-      // Remote values
+      // Timestamp remote values
       uint64_t remoteRx = rxPacket->rx[i].time;
       uint64_t prevRemoteTx = neighbourData->remoteTx;
 
-      // Local values
-      uint64_t localTx = ctx->localTx;
+      // Timestamp local values
+      // uint64_t localTx = localTx;
       uint64_t prevLocalRx = neighbourData->localRx;
 
       // Calculations
@@ -161,7 +161,7 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t ownAddress, lpsSwarmPacket_t
       localReply_db = localReply;
       localRound_db = localRound;
       tof_db = neighbourData->tof;
-      dctCount_db = dict_count(ctx->dct);
+      dctCount_db = dict_count(dct);
       break;
     }
   }
