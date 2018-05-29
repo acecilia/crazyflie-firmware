@@ -113,6 +113,11 @@ static uint32_t rxcallback(dwDevice_t *dev) {
   return twrSwarmAlgorithm.rxcallback(dev, options, rxPacket, dataLength);
   */
 
+  dwNewTransmit(dev);
+  dwSetDefaults(dev);
+  dwWaitForResponse(dev, true);
+  dwStartTransmit(dev);
+
   return MAX_TIMEOUT;
 }
 
@@ -124,16 +129,30 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 {
   blink(LED_BLUE_L);
 
-  static uint32_t statisticStartTick = 0;
-
-  if (statisticStartTick == 0) {
-    statisticStartTick = xTaskGetTickCount();
+  switch(event) {
+    case eventPacketReceived:
+      blink(LED_GREEN_L);
+      break;
+    case eventPacketSent:
+      break;
+    case eventTimeout:  // Comes back to timeout after each ranging attempt
+      blink(LED_RED_L);
+      break;
+    case eventReceiveTimeout:
+      blink(LED_GREEN_R);
+      blink(LED_RED_L);
+      break;
+    case eventReceiveFailed:
+      blink(LED_GREEN_R);
+      blink(LED_GREEN_L);
+      break;
+    default:
+      blink(LED_GREEN_R);
+      break;
   }
 
   switch(event) {
     case eventPacketReceived:
-      blink(LED_GREEN_L);
-      succededRangingCounter++;
       return rxcallback(dev);
       break;
     case eventPacketSent:
@@ -141,7 +160,6 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
       return MAX_TIMEOUT;
       break;
     case eventTimeout:  // Comes back to timeout after each ranging attempt
-      blink(LED_RED_L);
       initiateRanging(dev); // Added
       return MAX_TIMEOUT;
       break;
