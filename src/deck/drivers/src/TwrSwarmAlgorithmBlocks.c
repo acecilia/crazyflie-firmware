@@ -102,7 +102,7 @@ unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoA
   lpsSwarmPacket_t* txPacket = *txPacketPointer; // Declared for convenience and cleaner code
   txPacket->sourceAddress = sourceAddress;
   txPacket->tx = localTx;
-  txPacket->rxLength = rxLength;
+  txPacket->payloadLength = rxLength;
 
   if (rxLength > 0) {
     // Get data from the dict and into the txPacket array
@@ -116,7 +116,7 @@ unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoA
         .time = data->localRx
       };
 
-      txPacket->rx[i] = pair;
+      txPacket->payload[i] = pair;
       dict_itor_next(itor);
     }
 
@@ -126,7 +126,7 @@ unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoA
   return txPacketLength;
 }
 
-void processRxPacket(dwDevice_t *dev, locoAddress_t ownAddress, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t localTx) {
+void processRxPacket(dwDevice_t *dev, locoAddress_t localAddress, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t lastKnownLocalTxTimestamp) {
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
   neighbourData_t* neighbourData = getDataForNeighbour(dct, rxPacket->sourceAddress);
@@ -137,15 +137,15 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t ownAddress, lpsSwarmPacket_t
   // Timestamp local values
   uint64_t localRx = rxTimestamp.full;
 
-  for(int i = 0; i < rxPacket->rxLength; i++) {
-    if (rxPacket->rx[i].address == ownAddress) { // To be executed only once
+  for(int i = 0; i < rxPacket->payloadLength; i++) {
+    if (rxPacket->payload[i].address == localAddress) { // To be executed only once
 
       // Timestamp remote values
-      uint64_t remoteRx = rxPacket->rx[i].time;
+      uint64_t remoteRx = rxPacket->payload[i].time;
       uint64_t prevRemoteTx = neighbourData->remoteTx;
 
       // Timestamp local values
-      // uint64_t localTx = localTx;
+      uint64_t localTx = lastKnownLocalTxTimestamp;
       uint64_t prevLocalRx = neighbourData->localRx;
 
       // Calculations
@@ -173,6 +173,7 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t ownAddress, lpsSwarmPacket_t
 }
 
 // DEBUG (to be removed)
+/*
 LOG_GROUP_START(twrSwarm)
 LOG_ADD(LOG_UINT32, remoteReply, &remoteReply_db)
 LOG_ADD(LOG_UINT32, localReply, &localReply_db)
@@ -180,3 +181,4 @@ LOG_ADD(LOG_UINT32, localRound, &localRound_db)
 LOG_ADD(LOG_UINT32, tof, &tof_db)
 LOG_ADD(LOG_UINT32, dctCount, &dctCount_db)
 LOG_GROUP_STOP(twrSwarm)
+ */ 

@@ -20,8 +20,8 @@ typedef struct {
   locoAddress_t sourceAddress;
   uint64_t tx;
 
-  uint8_t rxLength; // Allows for 256 pairs
-  addressTimePair_t rx[];
+  uint8_t payloadLength; // Allows a logic limit of 256 pairs (which limits the maximum number of drones participating in the swarm to 256)
+  addressTimePair_t payload[];
 } lpsSwarmPacket_t;
 
 /**

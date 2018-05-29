@@ -42,10 +42,9 @@ static void testFillDictionary(dict* dct, locoAddress_t address, neighbourData_t
  A function to find a pair inside the payload of a packet. Needed because when passing the dictionary data to an array, there order is not specified
  */
 static addressTimePair_t* testFindPairInPayload(lpsSwarmPacket_t* packet, locoAddress_t address) {
-
-  for (unsigned int i = 0; i < packet->rxLength; i++) {
-    if (packet->rx[i].address == address) {
-      return &packet->rx[i];
+  for (unsigned int i = 0; i < packet->payloadLength; i++) {
+    if (packet->payload[i].address == address) {
+      return &packet->payload[i];
     }
   }
   return NULL;
@@ -175,7 +174,7 @@ void testCreateTxPacketWithoutPayload() {
   TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
   TEST_ASSERT_EQUAL_UINT64(sourceAddress, txPacket->sourceAddress);
   TEST_ASSERT_EQUAL_UINT64(localTx, txPacket->tx);
-  TEST_ASSERT_EQUAL_UINT8(0, txPacket->rxLength);
+  TEST_ASSERT_EQUAL_UINT8(0, txPacket->payloadLength);
 }
 
 void testCreateTxPacketWithPayload() {
@@ -199,7 +198,7 @@ void testCreateTxPacketWithPayload() {
   TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
   TEST_ASSERT_EQUAL_UINT64(sourceAddress, txPacket->sourceAddress);
   TEST_ASSERT_EQUAL_UINT64(localTx, txPacket->tx);
-  TEST_ASSERT_EQUAL_UINT8(elementsCount, txPacket->rxLength);
+  TEST_ASSERT_EQUAL_UINT8(elementsCount, txPacket->payloadLength);
   for (uint8_t i = 0; i < elementsCount; i++) {
     addressTimePair_t* pair = testFindPairInPayload(txPacket, i);
     TEST_ASSERT_EQUAL_UINT64(i, pair->address);
@@ -252,12 +251,12 @@ void testProcessRxPacketWithPayload() {
   lpsSwarmPacket_t* rxPacket = pvPortMalloc(sizeof(lpsSwarmPacket_t) + 1 * sizeof(addressTimePair_t));
   rxPacket->sourceAddress = remoteAddress;
   rxPacket->tx = remoteTx;
-  rxPacket->rxLength = 1;
+  rxPacket->payloadLength = 1;
   addressTimePair_t pair = {
     .address = localAddress,
     .time = remoteRx
   };
-  rxPacket->rx[0] = pair;
+  rxPacket->payload[0] = pair;
 
   // Test
   processRxPacket(&dummyDev, localAddress, rxPacket, dct, localTx);
@@ -294,7 +293,7 @@ void testProcessRxPacketWithoutPayload() {
   lpsSwarmPacket_t* rxPacket = pvPortMalloc(sizeof(lpsSwarmPacket_t));
   rxPacket->sourceAddress = remoteAddress;
   rxPacket->tx = remoteTx;
-  rxPacket->rxLength = 0;
+  rxPacket->payloadLength = 0;
 
   // Test
   uint64_t dummyLocalTx = 9999; // Not needed, as localTx is only used when there is payload
