@@ -58,12 +58,37 @@ static lpsAlgoOptions_t* options;
 static bool rangingOk;
 
 // Additions
-static int blinkCounter = 0;
-static void blink(led_t led) {
-  blinkCounter++;
+static unsigned int BLUE_L_counter = 0;
+static unsigned int GREEN_L_counter = 0;
+static unsigned int RED_L_counter = 0;
+static unsigned int GREEN_R_counter = 0;
 
-  if (blinkCounter == 1000) {
-    blinkCounter = 0;
+
+static void blink(led_t led) {
+  unsigned int* blinkCounter;
+
+  switch (led) {
+    case LED_BLUE_L:
+      blinkCounter = &BLUE_L_counter;
+      break;
+    case LED_GREEN_L:
+      blinkCounter = &GREEN_L_counter;
+      break;
+    case LED_RED_L:
+      blinkCounter = &RED_L_counter;
+      break;
+    case LED_GREEN_R:
+      blinkCounter = &GREEN_R_counter;
+      break;
+    default:
+      configASSERT(false);
+      break;
+  }
+
+  (*blinkCounter)++;
+
+  if (*blinkCounter == 1000) {
+    *blinkCounter = 0;
     ledToggle(led);
   }
 }
@@ -99,24 +124,21 @@ static void txcallback(dwDevice_t *dev) {
 }
 
 static uint32_t rxcallback(dwDevice_t *dev) {
-  /*
-  DEBUG_PRINT("rxc1\n");
+  unsigned int dataLength = dwGetDataLength(dev);
 
-  int dataLength = dwGetDataLength(dev);
-  lpsSwarmPacket_t* rxPacket = NULL;
-
-  if (dataLength != 0) {
-    rxPacket = pvPortMalloc(dataLength);
-    dwGetData(dev, (uint8_t*)&rxPacket, dataLength);
+  if (dataLength > 0) {
+    lpsSwarmPacket_t* rxPacket = pvPortMalloc(dataLength);
+    dwGetData(dev, (uint8_t*)rxPacket, dataLength);
+    twrSwarmAlgorithm.rxcallback(dev, options, rxPacket, dataLength);
+    vPortFree(rxPacket);
   }
 
-  return twrSwarmAlgorithm.rxcallback(dev, options, rxPacket, dataLength);
-  */
-
+  /*
   dwNewTransmit(dev);
   dwSetDefaults(dev);
   dwWaitForResponse(dev, true);
   dwStartTransmit(dev);
+  */
 
   return MAX_TIMEOUT;
 }
@@ -140,14 +162,11 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
       break;
     case eventReceiveTimeout:
       blink(LED_GREEN_R);
-      blink(LED_RED_L);
       break;
     case eventReceiveFailed:
       blink(LED_GREEN_R);
-      blink(LED_GREEN_L);
       break;
     default:
-      blink(LED_GREEN_R);
       break;
   }
 
@@ -222,7 +241,7 @@ uwbAlgorithm_t uwbTwrSwarmTagAlgorithm = {
   .isRangingOk = isRangingOk,
 };
 
-LOG_GROUP_START(twrSwarm)
-LOG_ADD(LOG_UINT16, rangingPerSec, &rangingPerSec)
-LOG_ADD(LOG_UINT8, performanceRate, &performanceRate)
-LOG_GROUP_STOP(twrSwarm)
+//LOG_GROUP_START(twrSwarm)
+//LOG_ADD(LOG_UINT16, rangingPerSec, &rangingPerSec)
+//LOG_ADD(LOG_UINT8, performanceRate, &performanceRate)
+//LOG_GROUP_STOP(twrSwarm)

@@ -10,7 +10,7 @@
  */
 typedef struct {
   locoAddress_t address;
-  uint32_t time;
+  uint64_t time;
 } addressTimePair_t;
 
 /**
@@ -18,9 +18,9 @@ typedef struct {
  */
 typedef struct {
   locoAddress_t sourceAddress;
-  uint32_t tx;
+  uint64_t tx;
 
-  uint32_t rxLength;
+  uint8_t rxLength; // Allows for 256 pairs
   addressTimePair_t rx[];
 } lpsSwarmPacket_t;
 
@@ -29,8 +29,8 @@ typedef struct {
  */
 typedef struct {
   // Values to calculate clockDrift
-  uint32_t localRx; // To be set after reception
-  uint32_t remoteTx; // To be set after reception
+  uint64_t localRx; // To be set after reception
+  uint64_t remoteTx; // To be set after reception
 
   uint32_t tof; // To be set after reception
 } neighbourData_t;
@@ -42,7 +42,7 @@ typedef struct {
   dict *dct;
 
   // Values to calculate t_round
-  uint32_t localTx; // To be set after transmission
+  uint64_t localTx; // To be set after transmission
 } ctx_s;
 
 typedef struct {

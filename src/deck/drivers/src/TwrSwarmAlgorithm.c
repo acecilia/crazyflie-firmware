@@ -12,6 +12,7 @@ static void init() {
 
 static void initiateRanging(dwDevice_t *dev) {
   dwNewTransmit(dev);
+  dwSetDefaults(dev);
   dwWaitForResponse(dev, true);
   dwStartTransmit(dev);
 }
@@ -26,10 +27,10 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmP
 
     // Local values
     dwTime_t tx = findTransmitTimeAsSoonAsPossible(dev);
-    uint32_t localTx = tx.low32;
+    uint64_t localTx = tx.full;
 
-    lpsSwarmPacket_t* txPacket = NULL;
-    unsigned int txPacketLength = createTxPacket(&txPacket, ctx.dct, localTx, options->tagAddress);
+    lpsSwarmPacket_t* txPacket;
+    unsigned int txPacketLength = createTxPacket(&txPacket, ctx.dct, options->tagAddress, localTx);
 
     // Set data
     dwSetData(dev, (uint8_t*)txPacket, txPacketLength);

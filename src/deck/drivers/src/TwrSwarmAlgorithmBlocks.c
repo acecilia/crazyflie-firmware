@@ -1,5 +1,9 @@
 #include "TwrSwarmAlgorithmBlocks.h"
 
+// DEBUG (to be removed)
+#include "debug.h"
+#include "log.h"
+
 // Time length of the preamble
 #define PREAMBLE_LENGTH_S ( 128 * 1017.63e-9 )
 #define PREAMBLE_LENGTH (uint64_t)( PREAMBLE_LENGTH_S * 499.2e6 * 128 )
@@ -10,6 +14,13 @@
 
 #define TDMA_EXTRA_LENGTH_S ( 300e-6 )
 #define TDMA_EXTRA_LENGTH (uint64_t)( TDMA_EXTRA_LENGTH_S * 499.2e6 * 128 )
+
+// DEBUG (to be removed)
+uint32_t remoteReply_db = 1000;
+uint32_t localReply_db = 2000;
+uint32_t localRound_db = 3000;
+uint32_t tof_db = 4000;
+uint32_t dctCount_db = 5000;
 
 // Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0, and round the result up
 uint32_t adjustTxRxTime(dwTime_t *time) {
@@ -44,7 +55,7 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   return transmitTime;
 }
 
-double calculateClockCorrection(uint32_t prevRemoteTx, uint32_t remoteTx, uint32_t prevLocalRx, uint32_t localRx) {
+double calculateClockCorrection(uint64_t prevRemoteTx, uint64_t remoteTx, uint64_t prevLocalRx, uint64_t localRx) {
   if (prevRemoteTx == 0 || remoteTx == 0 || prevLocalRx == 0 || localRx == 0) {
     return 1;
   }
@@ -81,13 +92,14 @@ neighbourData_t* getDataForNeighbour(dict* dct, locoAddress_t address) {
   }
 }
 
-unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoAddress_t sourceAddress, uint32_t localTx) {
+unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoAddress_t sourceAddress, uint64_t localTx) {
   // Packet creation
   unsigned int rxLength = dict_count(dct);
   unsigned int txPacketLength = sizeof(lpsSwarmPacket_t) + rxLength * sizeof(addressTimePair_t);
 
-  lpsSwarmPacket_t* txPacket = pvPortMalloc(txPacketLength);
-  *txPacketPointer = txPacket;
+  *txPacketPointer = pvPortMalloc(txPacketLength);
+
+  lpsSwarmPacket_t* txPacket = *txPacketPointer; // Declared for convenience and cleaner code
   txPacket->sourceAddress = sourceAddress;
   txPacket->tx = localTx;
   txPacket->rxLength = rxLength;
@@ -115,22 +127,26 @@ unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoA
 }
 
 void processRxPacket(dwDevice_t *dev, locoAddress_t ownAddress, lpsSwarmPacket_t* rxPacket, ctx_s* ctx) {
+  dwTime_t rxTimestamp = { .full = 0 };
+  dwGetReceiveTimestamp(dev, &rxTimestamp);
+  neighbourData_t* neighbourData = getDataForNeighbour(ctx->dct, rxPacket->sourceAddress);
+
+  // Remote values
+  uint64_t remoteTx = rxPacket->tx;
+
+  // Local values
+  uint64_t localRx = rxTimestamp.full;
+
   for(int i = 0; i < rxPacket->rxLength; i++) {
     if (rxPacket->rx[i].address == ownAddress) { // To be executed only once
-      dwTime_t rx = { .full = 0 };
-      dwGetReceiveTimestamp(dev, &rx);
-
-      neighbourData_t* neighbourData = getDataForNeighbour(ctx->dct, rxPacket->sourceAddress);
 
       // Remote values
-      uint32_t remoteRx = rxPacket->rx[i].time;
-      uint32_t remoteTx = rxPacket->tx;
-      uint32_t prevRemoteTx = neighbourData->remoteTx;
+      uint64_t remoteRx = rxPacket->rx[i].time;
+      uint64_t prevRemoteTx = neighbourData->remoteTx;
 
       // Local values
-      uint32_t localRx = rx.low32;
-      uint32_t localTx = ctx->localTx;
-      uint32_t prevLocalRx = neighbourData->localRx;
+      uint64_t localTx = ctx->localTx;
+      uint64_t prevLocalRx = neighbourData->localRx;
 
       // Calculations
       uint32_t remoteReply = remoteTx - remoteRx;
@@ -140,10 +156,27 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t ownAddress, lpsSwarmPacket_t
       uint32_t localRound = localRx - localTx;
       neighbourData->tof = (localRound - localReply) / 2;
 
-      // Set historic
-      neighbourData->remoteTx = remoteTx;
-      neighbourData->localRx = localRx;
+      // DEBUG
+      remoteReply_db = remoteReply;
+      localReply_db = localReply;
+      localRound_db = localRound;
+      tof_db = neighbourData->tof;
+      dctCount_db = dict_count(ctx->dct);
       break;
     }
   }
+
+  // Save the remoteTx, so we can use it to calculate the clockCorrection
+  neighbourData->remoteTx = rxPacket->tx;
+  // Save the localRx, so we can calculate localReply when responding in the future
+  neighbourData->localRx = rxTimestamp.full;
 }
+
+// DEBUG (to be removed)
+LOG_GROUP_START(twrSwarm)
+LOG_ADD(LOG_UINT32, remoteReply, &remoteReply_db)
+LOG_ADD(LOG_UINT32, localReply, &localReply_db)
+LOG_ADD(LOG_UINT32, localRound, &localRound_db)
+LOG_ADD(LOG_UINT32, tof, &tof_db)
+LOG_ADD(LOG_UINT32, dctCount, &dctCount_db)
+LOG_GROUP_STOP(twrSwarm)
