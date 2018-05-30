@@ -196,6 +196,7 @@ PROJ_OBJ_CF2 += lpsTdoa3Tag.o
 PROJ_OBJ_CF2 += lpsTwrSwarmTag.o
 PROJ_OBJ_CF2 += TwrSwarmAlgorithm.o
 PROJ_OBJ_CF2 += TwrSwarmAlgorithmBlocks.o
+PROJ_OBJ_CF2 += TwrSwarmDebug.o
 PROJ_OBJ_CF2 += outlierFilter.o
 PROJ_OBJ_CF2 += flowdeck_v1v2.o
 PROJ_OBJ_CF2 += oa.o

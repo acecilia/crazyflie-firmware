@@ -1,8 +1,9 @@
 #include "TwrSwarmAlgorithmBlocks.h"
 
-// DEBUG (to be removed)
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "debug.h"
-#include "log.h"
+#include "TwrSwarmDebug.h"
+#endif
 
 // Time length of the preamble
 #define PREAMBLE_LENGTH_S ( 128 * 1017.63e-9 )
@@ -14,13 +15,6 @@
 
 #define TDMA_EXTRA_LENGTH_S ( 300e-6 )
 #define TDMA_EXTRA_LENGTH (uint64_t)( TDMA_EXTRA_LENGTH_S * 499.2e6 * 128 )
-
-// DEBUG (to be removed)
-uint32_t remoteReply_db = 1000;
-uint32_t localReply_db = 2000;
-uint32_t localRound_db = 3000;
-uint32_t tof_db = 4000;
-uint32_t dctCount_db = 5000;
 
 // Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0, and round the result up
 uint32_t adjustTxRxTime(dwTime_t *time) {
@@ -156,12 +150,13 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t localAddress, lpsSwarmPacket
       uint32_t localRound = localRx - localTx;
       neighbourData->tof = (localRound - localReply) / 2;
 
-      // DEBUG
-      remoteReply_db = remoteReply;
-      localReply_db = localReply;
-      localRound_db = localRound;
-      tof_db = neighbourData->tof;
-      dctCount_db = dict_count(dct);
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+      debug.remoteReply = remoteReply;
+      debug.localReply = localReply;
+      debug.localRound = localRound;
+      debug.tof = neighbourData->tof;
+      debug.dctCount = dict_count(dct);
+#endif
       break;
     }
   }
@@ -171,14 +166,3 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t localAddress, lpsSwarmPacket
   // Save the localRx, so we can calculate localReply when responding in the future
   neighbourData->localRx = rxTimestamp.full;
 }
-
-// DEBUG (to be removed)
-/*
-LOG_GROUP_START(twrSwarm)
-LOG_ADD(LOG_UINT32, remoteReply, &remoteReply_db)
-LOG_ADD(LOG_UINT32, localReply, &localReply_db)
-LOG_ADD(LOG_UINT32, localRound, &localRound_db)
-LOG_ADD(LOG_UINT32, tof, &tof_db)
-LOG_ADD(LOG_UINT32, dctCount, &dctCount_db)
-LOG_GROUP_STOP(twrSwarm)
- */ 

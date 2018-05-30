@@ -33,77 +33,21 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include "log.h"
 #include "crtp_localization_service.h"
 
 #include "stabilizer_types.h"
 #include "estimator_kalman.h"
 #include "arm_math.h"
 
-// Additions
-#include "led.h"
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "debug.h"
-#include "timers.h"
+#include "TwrSwarmDebug.h"
+#endif
 
 #include "TwrSwarmAlgorithm.h"
 
-// Rangin statistics
-static uint16_t rangingPerSec = 0;
-static uint8_t performanceRate = 0;
-// Used to calculate above values
-static uint16_t succededRangingCounter = 0;
-static uint16_t failedRangingCounter = 0;
-
 static lpsAlgoOptions_t* options;
 static bool rangingOk;
-
-// Additions
-static unsigned int BLUE_L_counter = 0;
-static unsigned int GREEN_L_counter = 0;
-static unsigned int RED_L_counter = 0;
-static unsigned int GREEN_R_counter = 0;
-
-
-static void blink(led_t led) {
-  unsigned int* blinkCounter;
-
-  switch (led) {
-    case LED_BLUE_L:
-      blinkCounter = &BLUE_L_counter;
-      break;
-    case LED_GREEN_L:
-      blinkCounter = &GREEN_L_counter;
-      break;
-    case LED_RED_L:
-      blinkCounter = &RED_L_counter;
-      break;
-    case LED_GREEN_R:
-      blinkCounter = &GREEN_R_counter;
-      break;
-    default:
-      configASSERT(false);
-      break;
-  }
-
-  (*blinkCounter)++;
-
-  if (*blinkCounter == 1000) {
-    *blinkCounter = 0;
-    ledToggle(led);
-  }
-}
-static xTimerHandle logTimer;
-static void logTimerCallback(xTimerHandle timer) {
-  rangingPerSec = failedRangingCounter + succededRangingCounter;
-  if (rangingPerSec > 0) {
-    performanceRate = 100.0f*(float)succededRangingCounter / (float)rangingPerSec;
-  } else {
-    performanceRate = 0.0f;
-  }
-
-  failedRangingCounter = 0;
-  succededRangingCounter = 0;
-}
 
 /*static void sendData(dwDevice_t *dev, void *data, bool waitForResponse) {
   dwNewTransmit(dev);
@@ -149,22 +93,22 @@ static void initiateRanging(dwDevice_t *dev) {
 
 static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 {
-  blink(LED_BLUE_L);
+  debug.blink(LED_BLUE_L);
 
   switch(event) {
     case eventPacketReceived:
-      blink(LED_GREEN_L);
+      debug.blink(LED_GREEN_L);
       break;
     case eventPacketSent:
       break;
     case eventTimeout:  // Comes back to timeout after each ranging attempt
-      blink(LED_RED_L);
+      debug.blink(LED_RED_L);
       break;
     case eventReceiveTimeout:
-      blink(LED_GREEN_R);
+      debug.blink(LED_GREEN_R);
       break;
     case eventReceiveFailed:
-      blink(LED_GREEN_R);
+      debug.blink(LED_GREEN_R);
       break;
     default:
       break;
@@ -199,9 +143,9 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 
   options = algoOptions;
 
-  // Initialize the logging timer
-  logTimer = xTimerCreate("loggingTimer", M2T(1000), pdTRUE, NULL, logTimerCallback);
-  xTimerStart(logTimer, 0);
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+  debug.init();
+#endif
 
   dwSetReceiveWaitTimeout(dev, TWR_RECEIVE_TIMEOUT);
   dwCommitConfiguration(dev);
@@ -240,8 +184,3 @@ uwbAlgorithm_t uwbTwrSwarmTagAlgorithm = {
   .onEvent = twrTagOnEvent,
   .isRangingOk = isRangingOk,
 };
-
-//LOG_GROUP_START(twrSwarm)
-//LOG_ADD(LOG_UINT16, rangingPerSec, &rangingPerSec)
-//LOG_ADD(LOG_UINT8, performanceRate, &performanceRate)
-//LOG_GROUP_STOP(twrSwarm)

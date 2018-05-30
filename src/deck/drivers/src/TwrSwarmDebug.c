@@ -1,0 +1,78 @@
+#include "TwrSwarmDebug.h"
+#include "log.h"
+
+#include "FreeRTOS.h"
+#include "timers.h"
+
+static void blink(led_t led);
+static void init();
+
+debug_t debug = {
+  .remoteReply = 1000,
+  .localReply = 2000,
+  .localRound = 3000,
+  .tof = 4000,
+  .dctCount = 5000,
+  .totalRangingPerSec = 6000,
+  .succededRangingPerSec = 7000,
+  .blink = blink,
+  .init = init
+};
+
+// Blink debug tools
+static unsigned int BLUE_L_counter = 0;
+static unsigned int GREEN_L_counter = 0;
+static unsigned int RED_L_counter = 0;
+static unsigned int GREEN_R_counter = 0;
+static unsigned int RED_R_counter = 0;
+
+static void blink(led_t led) {
+  unsigned int* blinkCounter = NULL;
+
+  switch (led) {
+    case LED_BLUE_L:
+      blinkCounter = &BLUE_L_counter;
+      break;
+    case LED_GREEN_L:
+      blinkCounter = &GREEN_L_counter;
+      break;
+    case LED_RED_L:
+      blinkCounter = &RED_L_counter;
+      break;
+    case LED_GREEN_R:
+      blinkCounter = &GREEN_R_counter;
+      break;
+    case LED_RED_R:
+      blinkCounter = &RED_R_counter;
+      break;
+  }
+
+  (*blinkCounter)++;
+
+  if (*blinkCounter == 1000) {
+    *blinkCounter = 0;
+    ledToggle(led);
+  }
+}
+
+// Timer debug tools
+static xTimerHandle logTimer;
+static void logTimerCallback(xTimerHandle timer) {
+  debug.totalRangingPerSec = 0;
+  debug.succededRangingPerSec = 0;
+}
+
+static void init() {
+  logTimer = xTimerCreate("loggingTimer", M2T(1000), pdTRUE, NULL, logTimerCallback);
+  xTimerStart(logTimer, 0);
+}
+
+LOG_GROUP_START(twrSwarm)
+LOG_ADD(LOG_UINT32, remoteReply, &debug.remoteReply)
+LOG_ADD(LOG_UINT32, localReply, &debug.localReply)
+LOG_ADD(LOG_UINT32, localRound, &debug.localRound)
+LOG_ADD(LOG_UINT32, tof, &debug.tof)
+LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
+LOG_ADD(LOG_UINT16, rangingPerSec, &debug.totalRangingPerSec)
+LOG_ADD(LOG_UINT16, okRangingPerSec, &debug.succededRangingPerSec)
+LOG_GROUP_STOP(twrSwarm)
