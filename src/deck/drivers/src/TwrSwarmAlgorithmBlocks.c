@@ -1,7 +1,6 @@
 #include "TwrSwarmAlgorithmBlocks.h"
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-#include "debug.h"
 #include "TwrSwarmDebug.h"
 #endif
 
@@ -133,6 +132,10 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t localAddress, lpsSwarmPacket
 
   for(int i = 0; i < rxPacket->payloadLength; i++) {
     if (rxPacket->payload[i].address == localAddress) { // To be executed only once
+
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+      debug.succededRangingPerSec++;
+#endif
 
       // Timestamp remote values
       uint64_t remoteRx = rxPacket->payload[i].time;

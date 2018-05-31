@@ -1,6 +1,10 @@
 #include "TwrSwarmAlgorithm.h"
 #include "TwrSwarmAlgorithmBlocks.h"
 
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+#include "TwrSwarmDebug.h"
+#endif
+
 ctx_s ctx;
 
 static void init() {
@@ -11,6 +15,10 @@ static void init() {
 }
 
 static void initiateRanging(dwDevice_t *dev) {
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+  debug.totalRangingPerSec++;
+#endif
+
   dwNewTransmit(dev);
   dwSetDefaults(dev);
   dwWaitForResponse(dev, true);
@@ -23,6 +31,10 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmP
   }
 
   if (true) {
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+    debug.totalRangingPerSec++;
+#endif
+
     // Is its turn to send data
 
     // Local values

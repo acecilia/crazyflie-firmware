@@ -40,7 +40,6 @@
 #include "arm_math.h"
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-#include "debug.h"
 #include "TwrSwarmDebug.h"
 #endif
 
@@ -76,13 +75,6 @@ static uint32_t rxcallback(dwDevice_t *dev) {
     twrSwarmAlgorithm.rxcallback(dev, options, rxPacket, dataLength);
     vPortFree(rxPacket);
   }
-
-  /*
-  dwNewTransmit(dev);
-  dwSetDefaults(dev);
-  dwWaitForResponse(dev, true);
-  dwStartTransmit(dev);
-  */
 
   return MAX_TIMEOUT;
 }

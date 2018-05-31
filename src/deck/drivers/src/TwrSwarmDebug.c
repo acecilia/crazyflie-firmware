@@ -55,9 +55,15 @@ static void blink(led_t led) {
   }
 }
 
+// Ranging measurement tools
+uint16_t lastKnownTotalRangingPerSec = 0;
+uint16_t lastKnownSuccededRangingPerSec = 0;
+
 // Timer debug tools
 static xTimerHandle logTimer;
 static void logTimerCallback(xTimerHandle timer) {
+  lastKnownTotalRangingPerSec = debug.totalRangingPerSec;
+  lastKnownSuccededRangingPerSec = debug.succededRangingPerSec;
   debug.totalRangingPerSec = 0;
   debug.succededRangingPerSec = 0;
 }
@@ -73,6 +79,6 @@ LOG_ADD(LOG_UINT32, localReply, &debug.localReply)
 LOG_ADD(LOG_UINT32, localRound, &debug.localRound)
 LOG_ADD(LOG_UINT32, tof, &debug.tof)
 LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
-LOG_ADD(LOG_UINT16, rangingPerSec, &debug.totalRangingPerSec)
-LOG_ADD(LOG_UINT16, okRangingPerSec, &debug.succededRangingPerSec)
+LOG_ADD(LOG_UINT16, rangingPerSec, &lastKnownTotalRangingPerSec)
+LOG_ADD(LOG_UINT16, okRangingPerSec, &lastKnownSuccededRangingPerSec)
 LOG_GROUP_STOP(twrSwarm)
