@@ -7,8 +7,15 @@
 
 typedef struct {
   uint32_t remoteReply;
+  uint32_t remoteRx;
+  uint32_t remoteTx;
+
   uint32_t localReply;
+
   uint32_t localRound;
+  uint32_t localRx;
+  uint32_t localTx;
+
   uint32_t tof;
   uint32_t dctCount;
   uint16_t totalRangingPerSec;

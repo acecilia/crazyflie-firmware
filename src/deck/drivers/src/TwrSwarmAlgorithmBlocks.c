@@ -155,8 +155,17 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t localAddress, lpsSwarmPacket
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       debug.remoteReply = remoteReply;
+      debug.remoteRx = remoteRx;
+      debug.remoteTx = remoteTx;
+
       debug.localReply = localReply;
+
       debug.localRound = localRound;
+      if (localRound < localReply) {
+        debug.localRx = localRx;
+        debug.localTx = localTx;
+      }
+
       debug.tof = neighbourData->tof;
       debug.dctCount = dict_count(dct);
 #endif
