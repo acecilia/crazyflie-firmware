@@ -149,11 +149,16 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t localAddress, lpsSwarmPacket
       uint32_t remoteReply = remoteTx - remoteRx;
       double clockCorrection = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
       uint32_t localReply = remoteReply * clockCorrection;
-
       uint32_t localRound = localRx - localTx;
+
+      // Verify the obtained results are correct
       neighbourData->tof = (localRound - localReply) / 2;
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+      if (localReply > localRound) {
+        debug.measurementFailure++;
+      }
+
       debug.remoteReply = remoteReply;
       debug.remoteRx = remoteRx;
       debug.remoteTx = remoteTx;
@@ -161,12 +166,11 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t localAddress, lpsSwarmPacket
       debug.localReply = localReply;
 
       debug.localRound = localRound;
-      if (localRound < localReply) {
-        debug.localRx = localRx;
-        debug.localTx = localTx;
-      }
+      debug.localRx = localRx;
+      debug.localTx = localTx;
 
       debug.tof = neighbourData->tof;
+
       debug.dctCount = dict_count(dct);
 #endif
       break;

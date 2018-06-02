@@ -19,9 +19,14 @@ debug_t debug = {
   .localTx = 3200,
 
   .tof = 4000,
+
   .dctCount = 5000,
+
   .totalRangingPerSec = 6000,
   .succededRangingPerSec = 7000,
+
+  .measurementFailure = 0,
+
   .blink = blink,
   .init = init
 };
@@ -92,7 +97,11 @@ LOG_ADD(LOG_UINT32, localRx, &debug.localRx)
 LOG_ADD(LOG_UINT32, localTx, &debug.localTx)
 
 LOG_ADD(LOG_UINT32, tof, &debug.tof)
+
 LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
+
 LOG_ADD(LOG_UINT16, rangingPerSec, &lastKnownTotalRangingPerSec)
 LOG_ADD(LOG_UINT16, okRangingPerSec, &lastKnownSuccededRangingPerSec)
+
+LOG_ADD(LOG_UINT32, measurementFail, &debug.measurementFailure)
 LOG_GROUP_STOP(twrSwarm)

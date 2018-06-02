@@ -17,9 +17,12 @@ typedef struct {
   uint32_t localTx;
 
   uint32_t tof;
+
   uint32_t dctCount;
+
   uint16_t totalRangingPerSec;
   uint16_t succededRangingPerSec;
+  uint32_t measurementFailure;
   
   void (*blink)(led_t led);
   void (*init)();
