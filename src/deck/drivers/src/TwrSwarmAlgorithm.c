@@ -5,7 +5,16 @@
 #include "TwrSwarmDebug.h"
 #endif
 
-ctx_s ctx;
+/**
+ A type that encapsulates all the required global values of the algorithm
+ */
+static struct {
+  dict *dct;
+
+  // Values to calculate t_round
+  uint64_t localTx; // To be set after transmission
+} ctx;
+
 
 static void init() {
   configure_dict_malloc();

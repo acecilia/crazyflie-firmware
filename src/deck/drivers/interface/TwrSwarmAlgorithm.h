@@ -11,7 +11,7 @@
 typedef struct {
   locoAddress_t address;
   uint64_t time;
-} addressTimePair_t;
+} __attribute__((packed)) addressTimePair_t;
 
 /**
  A type that encapsulates the data included in a packet
@@ -22,7 +22,7 @@ typedef struct {
 
   uint8_t payloadLength; // Allows a logic limit of 256 pairs (which limits the maximum number of drones participating in the swarm to 256)
   addressTimePair_t payload[];
-} lpsSwarmPacket_t;
+} __attribute__((packed)) lpsSwarmPacket_t;
 
 /**
  A type that encapsulates the information stored in the dictionary
@@ -33,17 +33,7 @@ typedef struct {
   uint64_t remoteTx; // To be set after reception
 
   uint32_t tof; // To be set after reception
-} neighbourData_t;
-
-/**
- A type that encapsulates all the required global values of the algorithm
- */
-typedef struct {
-  dict *dct;
-
-  // Values to calculate t_round
-  uint64_t localTx; // To be set after transmission
-} ctx_s;
+} __attribute__((packed)) neighbourData_t;
 
 typedef struct {
   void (*init)(void);
