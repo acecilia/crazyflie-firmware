@@ -54,6 +54,9 @@ static sensorData_t sensorData;
 static state_t state;
 static control_t control;
 
+static StateEstimatorType estimatorType;
+static ControllerType controllerType;
+
 static void stabilizerTask(void* param);
 
 void stabilizerInit(StateEstimatorType estimator)
@@ -63,12 +66,14 @@ void stabilizerInit(StateEstimatorType estimator)
 
   sensorsInit();
   stateEstimatorInit(estimator);
-  stateControllerInit();
+  controllerInit(ControllerTypeAny);
   powerDistributionInit();
   if (estimator == kalmanEstimator)
   {
     sitAwInit();
   }
+  estimatorType = getStateEstimator();
+  controllerType = getControllerType();
 
   xTaskCreate(stabilizerTask, STABILIZER_TASK_NAME,
               STABILIZER_TASK_STACKSIZE, NULL, STABILIZER_TASK_PRI, NULL);
@@ -82,7 +87,7 @@ bool stabilizerTest(void)
 
   pass &= sensorsTest();
   pass &= stateEstimatorTest();
-  pass &= stateControllerTest();
+  pass &= controllerTest();
   pass &= powerDistributionTest();
 
   return pass;
@@ -124,6 +129,17 @@ static void stabilizerTask(void* param)
   while(1) {
     vTaskDelayUntil(&lastWakeTime, F2T(RATE_MAIN_LOOP));
 
+    // allow to update estimator dynamically
+    if (getStateEstimator() != estimatorType) {
+      stateEstimatorInit(estimatorType);
+      estimatorType = getStateEstimator();
+    }
+    // allow to update controller dynamically
+    if (getControllerType() != controllerType) {
+      controllerInit(controllerType);
+      controllerType = getControllerType();
+    }
+
     getExtPosition(&state);
     stateEstimator(&state, &sensorData, &control, tick);
 
@@ -131,7 +147,7 @@ static void stabilizerTask(void* param)
 
     sitAwUpdateSetpoint(&setpoint, &sensorData, &state);
 
-    stateController(&control, &setpoint, &sensorData, &state, tick);
+    controller(&control, &setpoint, &sensorData, &state, tick);
 
     checkEmergencyStopTimeout();
 
@@ -160,6 +176,11 @@ void stabilizerSetEmergencyStopTimeout(int timeout)
   emergencyStop = false;
   emergencyStopTimeout = timeout;
 }
+
+PARAM_GROUP_START(stabilizer)
+PARAM_ADD(PARAM_UINT8, estimator, &estimatorType)
+PARAM_ADD(PARAM_UINT8, controller, &controllerType)
+PARAM_GROUP_STOP(stabilizer)
 
 LOG_GROUP_START(ctrltarget)
 LOG_ADD(LOG_FLOAT, roll, &setpoint.attitude.roll)

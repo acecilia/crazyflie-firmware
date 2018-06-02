@@ -28,7 +28,7 @@ LPS_TDOA_ENABLE   ?= 0
 ######### Stabilizer configuration ##########
 ##### Sets the name of the stabilizer module to use.
 ESTIMATOR          ?= any
-CONTROLLER         ?= pid
+CONTROLLER         ?= Any # one of Any, PID, Mellinger
 POWER_DISTRIBUTION ?= stock
 SENSORS 					 ?= cf2
 
@@ -164,7 +164,7 @@ PROJ_OBJ += crtp_commander_generic.o crtp_localization_service.o
 PROJ_OBJ += attitude_pid_controller.o sensfusion6.o stabilizer.o
 PROJ_OBJ += position_estimator_altitude.o position_controller_pid.o
 PROJ_OBJ += estimator.o estimator_complementary.o
-PROJ_OBJ += controller_$(CONTROLLER).o
+PROJ_OBJ += controller.o controller_pid.o controller_mellinger.o
 PROJ_OBJ += power_distribution_$(POWER_DISTRIBUTION).o
 PROJ_OBJ_CF2 += estimator_kalman.o
 
@@ -192,11 +192,8 @@ PROJ_OBJ_CF2 += zranger.o zranger2.o
 PROJ_OBJ_CF2 += locodeck.o
 PROJ_OBJ_CF2 += lpsTwrTag.o
 PROJ_OBJ_CF2 += lpsTdoa2Tag.o
-PROJ_OBJ_CF2 += lpsTdoa3Tag.o
-PROJ_OBJ_CF2 += lpsTwrSwarmTag.o
-PROJ_OBJ_CF2 += TwrSwarmAlgorithm.o
-PROJ_OBJ_CF2 += TwrSwarmAlgorithmBlocks.o
-PROJ_OBJ_CF2 += TwrSwarmDebug.o
+PROJ_OBJ_CF2 += lpsTdoa3Tag.o lpsTdoaTagEngine.o lpsTdoaTagStats.o
+PROJ_OBJ_CF2 += lpsTwrSwarmTag.o TwrSwarmAlgorithm.o TwrSwarmAlgorithmBlocks.o TwrSwarmDebug.o
 PROJ_OBJ_CF2 += outlierFilter.o
 PROJ_OBJ_CF2 += flowdeck_v1v2.o
 PROJ_OBJ_CF2 += oa.o
@@ -284,7 +281,7 @@ ifeq ($(USE_ESKYLINK), 1)
   CFLAGS += -DUSE_ESKYLINK
 endif
 
-CFLAGS += -DBOARD_REV_$(REV) -DESTIMATOR_NAME=$(ESTIMATOR)Estimator -DCONTROLLER_TYPE_$(CONTROLLER) -DPOWER_DISTRIBUTION_TYPE_$(POWER_DISTRIBUTION)
+CFLAGS += -DBOARD_REV_$(REV) -DESTIMATOR_NAME=$(ESTIMATOR)Estimator -DCONTROLLER_NAME=ControllerType$(CONTROLLER) -DPOWER_DISTRIBUTION_TYPE_$(POWER_DISTRIBUTION)
 
 CFLAGS += $(PROCESSOR) $(INCLUDES) $(STFLAGS)
 ifeq ($(PLATFORM), CF2)
