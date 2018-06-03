@@ -18,7 +18,7 @@
 /**
  The DW1000 has a 40 bits register to store the timestamp values. When the timestamp is higher than what is possible to store in those 40 bits, the count wraps around, despite a uint64_t value having enough bits to represent the number. This function reverses the wrap around.
  */
-static uint64_t fixWrapAroundIfNeeded(uint64_t minimumValue, uint64_t valueToFix) {
+static uint64_t fixDW1000WrapAroundIfNeeded(uint64_t minimumValue, uint64_t valueToFix) {
   if (minimumValue >= valueToFix) {
     uint64_t maximumDw1000Count = 0xffffffffff; //The maximum timestamp the DW1000 can return (40 bits)
     return maximumDw1000Count + valueToFix;
@@ -67,8 +67,8 @@ double calculateClockCorrection(uint64_t prevRemoteTx, uint64_t remoteTx, uint64
 
   double result = 1;
 
-  uint32_t tickCountRemote = fixWrapAroundIfNeeded(prevRemoteTx, remoteTx) - prevRemoteTx;
-  uint32_t tickCountLocal = fixWrapAroundIfNeeded(prevLocalRx, localRx) - prevLocalRx;
+  uint32_t tickCountRemote = fixDW1000WrapAroundIfNeeded(prevRemoteTx, remoteTx) - prevRemoteTx;
+  uint32_t tickCountLocal = fixDW1000WrapAroundIfNeeded(prevLocalRx, localRx) - prevLocalRx;
 
   if (tickCountRemote > 0) {
     result = (double)tickCountLocal / (double)tickCountRemote;
@@ -157,10 +157,10 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
       uint64_t prevLocalRx = neighbourData->localRx;
 
       // Calculations
-      uint32_t remoteReply = fixWrapAroundIfNeeded(remoteRx, remoteTx) - remoteRx;
+      uint32_t remoteReply = fixDW1000WrapAroundIfNeeded(remoteRx, remoteTx) - remoteRx;
       double clockCorrection = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
       uint32_t localReply = remoteReply * clockCorrection;
-      uint32_t localRound = fixWrapAroundIfNeeded(localTx, localRx) - localTx;
+      uint32_t localRound = fixDW1000WrapAroundIfNeeded(localTx, localRx) - localTx;
 
       // Verify the obtained results are correct
       neighbourData->tof = (localRound - localReply) / 2;
