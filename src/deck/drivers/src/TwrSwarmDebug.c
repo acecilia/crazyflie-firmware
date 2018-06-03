@@ -13,12 +13,13 @@ debug_t debug = {
   .localRound = 3000,
 
   .tof = 4000,
-  .tofTmp = 4500,
 
   .dctCount = 5000,
 
   .totalRangingPerSec = 6000,
   .succededRangingPerSec = 7000,
+
+  .auxiliaryValue = 8000, // To log something fast without the need of created the necessary logging code for it
 
   .measurementFailure = 0,
   .dw1000WrapAroundCount = 0,
@@ -87,12 +88,13 @@ LOG_ADD(LOG_UINT32, localReply, &debug.localReply)
 LOG_ADD(LOG_UINT32, localRound, &debug.localRound)
 
 LOG_ADD(LOG_UINT32, tof, &debug.tof)
-LOG_ADD(LOG_UINT32, tofTmp, &debug.tofTmp)
 
 LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
 
 LOG_ADD(LOG_UINT16, rangingPerSec, &lastKnownTotalRangingPerSec)
 LOG_ADD(LOG_UINT16, okRangingPerSec, &lastKnownSuccededRangingPerSec)
+
+LOG_ADD(LOG_UINT32, auxiliaryValue, &debug.auxiliaryValue)
 
 LOG_ADD(LOG_UINT32, measurementFail, &debug.measurementFailure)
 LOG_ADD(LOG_UINT32, wrapAround, &debug.dw1000WrapAroundCount)

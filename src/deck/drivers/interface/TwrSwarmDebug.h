@@ -10,12 +10,13 @@ typedef struct {
   uint32_t localRound;
 
   uint32_t tof;
-  uint32_t tofTmp;
 
   uint32_t dctCount;
 
   uint16_t totalRangingPerSec;
   uint16_t succededRangingPerSec;
+
+  uint32_t auxiliaryValue;
   
   uint32_t measurementFailure;
   uint32_t dw1000WrapAroundCount;

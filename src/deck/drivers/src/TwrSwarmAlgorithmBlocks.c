@@ -132,8 +132,6 @@ unsigned int allocAndFillTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct,
   return txPacketLength;
 }
 
-static uint32_t prevWrapCount = 0;
-
 void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t lastKnownLocalTxTimestamp) {
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
@@ -170,13 +168,12 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
       neighbourData->tof = (localRound - localReply) / 2;
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-      if (prevWrapCount != debug.dw1000WrapAroundCount) {
-        debug.tofTmp = neighbourData->tof;
-      }
-      prevWrapCount = debug.dw1000WrapAroundCount;
-
       if (localReply > localRound) {
         debug.measurementFailure++;
+      }
+
+      if (neighbourData->tof > 34000) {
+        debug.auxiliaryValue = remoteReply;
       }
 
       debug.remoteReply = remoteReply;
