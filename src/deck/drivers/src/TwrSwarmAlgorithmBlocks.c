@@ -15,13 +15,17 @@
 #define TDMA_EXTRA_LENGTH_S ( 300e-6 )
 #define TDMA_EXTRA_LENGTH (uint64_t)( TDMA_EXTRA_LENGTH_S * 499.2e6 * 128 )
 
+#define DW1000_MAXIMUM_COUNT (uint64_t)( 0xffffffffff ) //The maximum timestamp the DW1000 can return (40 bits)
+
 /**
  The DW1000 has a 40 bits register to store the timestamp values. When the timestamp is higher than what is possible to store in those 40 bits, the count wraps around, despite a uint64_t value having enough bits to represent the number. This function reverses the wrap around.
  */
 static uint64_t fixDW1000WrapAroundIfNeeded(uint64_t minimumValue, uint64_t valueToFix) {
   if (minimumValue >= valueToFix) {
-    uint64_t maximumDw1000Count = 0xffffffffff; //The maximum timestamp the DW1000 can return (40 bits)
-    return maximumDw1000Count + valueToFix;
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+    debug.dw1000WrapAroundCount++;
+#endif
+    return DW1000_MAXIMUM_COUNT + valueToFix;
   } else {
     return valueToFix;
   }
@@ -47,15 +51,13 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   // And some extra
   transmitTime.full += TDMA_EXTRA_LENGTH;
 
-  // TODO krri Adding randomization on this level adds a long delay, is it worth it?
-  // The randomization on OS level is quantized to 1 ms (tick time of the system)
-  // Add a high res random to smooth it out
-  // uint32_t r = rand();
-  // uint32_t delay = r % TDMA_HIGH_RES_RAND;
-  // transmitTime.full += delay;
-
-  // DW1000 can only schedule time with 9 LSB at 0, adjust for it
   adjustTxRxTime(&transmitTime);
+
+  // If the planned transmit time wraps around, recalculate it. This is probably not necessary for the dw1000 chip (since the bits further than the 40th will be discarded), but the tx timestamp is also included inside the packets, and is expected to contain the tx value wrapped around
+  if (transmitTime.full >= DW1000_MAXIMUM_COUNT) {
+    transmitTime.full = transmitTime.full - DW1000_MAXIMUM_COUNT;
+    adjustTxRxTime(&transmitTime);
+  }
 
   return transmitTime;
 }
@@ -130,16 +132,18 @@ unsigned int allocAndFillTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct,
   return txPacketLength;
 }
 
+static uint32_t prevWrapCount = 0;
+
 void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t lastKnownLocalTxTimestamp) {
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
   neighbourData_t* neighbourData = getDataForNeighbour(dct, rxPacket->sourceId);
 
   // Timestamp remote values
-  uint64_t remoteTx = rxPacket->tx;
+  const uint64_t remoteTx = rxPacket->tx;
 
   // Timestamp local values
-  uint64_t localRx = rxTimestamp.full;
+  const uint64_t localRx = rxTimestamp.full;
 
   for(int i = 0; i < rxPacket->payloadLength; i++) {
     if (rxPacket->payload[i].id == localId) { // To be executed only once
@@ -149,36 +153,35 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
 #endif
 
       // Timestamp remote values
-      uint64_t remoteRx = rxPacket->payload[i].time;
-      uint64_t prevRemoteTx = neighbourData->remoteTx;
+      const uint64_t remoteRx = rxPacket->payload[i].time;
+      const uint64_t prevRemoteTx = neighbourData->remoteTx;
 
       // Timestamp local values
-      uint64_t localTx = lastKnownLocalTxTimestamp;
-      uint64_t prevLocalRx = neighbourData->localRx;
+      const uint64_t localTx = lastKnownLocalTxTimestamp;
+      const uint64_t prevLocalRx = neighbourData->localRx;
 
       // Calculations
-      uint32_t remoteReply = fixDW1000WrapAroundIfNeeded(remoteRx, remoteTx) - remoteRx;
-      double clockCorrection = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
-      uint32_t localReply = remoteReply * clockCorrection;
-      uint32_t localRound = fixDW1000WrapAroundIfNeeded(localTx, localRx) - localTx;
+      const uint32_t remoteReply = fixDW1000WrapAroundIfNeeded(remoteRx, remoteTx) - remoteRx;
+      const double clockCorrection = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
+      const uint32_t localReply = remoteReply * clockCorrection;
+      const uint32_t localRound = fixDW1000WrapAroundIfNeeded(localTx, localRx) - localTx;
 
       // Verify the obtained results are correct
       neighbourData->tof = (localRound - localReply) / 2;
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+      if (prevWrapCount != debug.dw1000WrapAroundCount) {
+        debug.tofTmp = neighbourData->tof;
+      }
+      prevWrapCount = debug.dw1000WrapAroundCount;
+
       if (localReply > localRound) {
         debug.measurementFailure++;
       }
 
       debug.remoteReply = remoteReply;
-      debug.remoteRx = remoteRx;
-      debug.remoteTx = remoteTx;
-
       debug.localReply = localReply;
-
       debug.localRound = localRound;
-      debug.localRx = localRx;
-      debug.localTx = localTx;
 
       debug.tof = neighbourData->tof;
 

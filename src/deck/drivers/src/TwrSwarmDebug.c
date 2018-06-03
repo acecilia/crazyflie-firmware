@@ -9,16 +9,11 @@ static void init();
 
 debug_t debug = {
   .remoteReply = 1000,
-  .remoteRx = 1100,
-  .remoteTx = 1200,
-
   .localReply = 2000,
-
   .localRound = 3000,
-  .localRx = 3100,
-  .localTx = 3200,
 
   .tof = 4000,
+  .tofTmp = 4500,
 
   .dctCount = 5000,
 
@@ -26,6 +21,7 @@ debug_t debug = {
   .succededRangingPerSec = 7000,
 
   .measurementFailure = 0,
+  .dw1000WrapAroundCount = 0,
 
   .blink = blink,
   .init = init
@@ -87,16 +83,11 @@ static void init() {
 
 LOG_GROUP_START(twrSwarm)
 LOG_ADD(LOG_UINT32, remoteReply, &debug.remoteReply)
-LOG_ADD(LOG_UINT32, remoteRx, &debug.remoteRx)
-LOG_ADD(LOG_UINT32, remoteTx, &debug.remoteTx)
-
 LOG_ADD(LOG_UINT32, localReply, &debug.localReply)
-
 LOG_ADD(LOG_UINT32, localRound, &debug.localRound)
-LOG_ADD(LOG_UINT32, localRx, &debug.localRx)
-LOG_ADD(LOG_UINT32, localTx, &debug.localTx)
 
 LOG_ADD(LOG_UINT32, tof, &debug.tof)
+LOG_ADD(LOG_UINT32, tofTmp, &debug.tofTmp)
 
 LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
 
@@ -104,4 +95,5 @@ LOG_ADD(LOG_UINT16, rangingPerSec, &lastKnownTotalRangingPerSec)
 LOG_ADD(LOG_UINT16, okRangingPerSec, &lastKnownSuccededRangingPerSec)
 
 LOG_ADD(LOG_UINT32, measurementFail, &debug.measurementFailure)
+LOG_ADD(LOG_UINT32, wrapAround, &debug.dw1000WrapAroundCount)
 LOG_GROUP_STOP(twrSwarm)
