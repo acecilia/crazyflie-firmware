@@ -59,15 +59,13 @@ void tearDown(void) {
 }
 
 void testAdjustTxRxTime() {
-  uint32_t initialValue = 0x000001FF;
-  uint32_t expectedValue = 0x00000200;
-  uint32_t expectedAdded = expectedValue - initialValue;
+  uint64_t initialValue = 0x000001FF;
+  uint64_t expectedValue = 0x00000200;
 
   dwTime_t time = { .full = initialValue };
-  uint32_t added = adjustTxRxTime(&time);
+  adjustTxRxTime(&time);
 
-  TEST_ASSERT_EQUAL_UINT32(expectedValue, time.low32);
-  TEST_ASSERT_EQUAL_UINT32(expectedAdded, added);
+  TEST_ASSERT_EQUAL_UINT64(expectedValue, time.full);
 }
 
 void testFindTransmitTimeAsSoonAsPossible() {

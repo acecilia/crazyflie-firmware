@@ -20,13 +20,10 @@ locoId_t getId(locoAddress_t address) {
 }
 
 // Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0, and round the result up
-uint32_t adjustTxRxTime(dwTime_t *time) {
-  uint32_t added = (1<<9) - (time->low32 & ((1<<9)-1));
-
-  time->low32 = (time->low32 & ~((1<<9)-1)) + (1<<9);
-
-  return added;
+void adjustTxRxTime(dwTime_t *time) {
+  time->full = (time->full & ~((1 << 9) - 1)) + (1 << 9);
 }
+
 
 dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   dwTime_t transmitTime = { .full = 0 };
