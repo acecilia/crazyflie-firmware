@@ -144,28 +144,6 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
   dwSetReceiveWaitTimeout(dev, TWR_RECEIVE_TIMEOUT);
   dwCommitConfiguration(dev);
   rangingOk = false;
-
-  /*for(int i = 0; i < 5; i++) {
-    DEBUG_PRINT("\n\nRxcallback:\n");
-
-    ////////////
-    // Set new values on the dictionary
-    neighbourData_t* data = twrSwarmAlgorithm.getDataForNeighbour(twrSwarmAlgorithm.ctx->dct, 66);
-    data->localRx = data->localRx + 10;
-    data->remoteTx = 66;
-    data->tof = 66;
-
-    // Verify that the data is saved correctly
-    neighbourData_t* neighbourData = twrSwarmAlgorithm.getDataForNeighbour(twrSwarmAlgorithm.ctx->dct, 66);
-    if (neighbourData->localRx == data->localRx) {
-      DEBUG_PRINT("Ok: Data saved correctly");
-    } else {
-      DEBUG_PRINT("Error: expected data not found in dictionary");
-    }
-    ////////////
-
-    twrSwarmAlgorithm.rxcallback(dev, options, NULL, 0);
-  }*/
 }
 
 static bool isRangingOk()

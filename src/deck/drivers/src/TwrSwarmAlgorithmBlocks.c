@@ -15,6 +15,18 @@
 #define TDMA_EXTRA_LENGTH_S ( 300e-6 )
 #define TDMA_EXTRA_LENGTH (uint64_t)( TDMA_EXTRA_LENGTH_S * 499.2e6 * 128 )
 
+/**
+ The DW1000 has a 40 bits register to store the timestamp values. When the timestamp is higher than what is possible to store in those 40 bits, the count wraps around, despite a uint64_t value having enough bits to represent the number. This function reverses the wrap around.
+ */
+static uint64_t fixWrapAroundIfNeeded(uint64_t minimumValue, uint64_t valueToFix) {
+  if (minimumValue >= valueToFix) {
+    uint64_t maximumDw1000Count = 0xffffffffff; //The maximum timestamp the DW1000 can return (40 bits)
+    return maximumDw1000Count + valueToFix;
+  } else {
+    return valueToFix;
+  }
+}
+
 locoId_t getId(locoAddress_t address) {
   return address & 0xff;
 }
@@ -23,7 +35,6 @@ locoId_t getId(locoAddress_t address) {
 void adjustTxRxTime(dwTime_t *time) {
   time->full = (time->full & ~((1 << 9) - 1)) + (1 << 9);
 }
-
 
 dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   dwTime_t transmitTime = { .full = 0 };
@@ -56,11 +67,10 @@ double calculateClockCorrection(uint64_t prevRemoteTx, uint64_t remoteTx, uint64
 
   double result = 1;
 
-  // Assigning to uint32_t truncates the diffs and takes care of wrapping clocks
-  uint32_t tickCountRemote = remoteTx - prevRemoteTx;
-  uint32_t tickCountLocal = localRx - prevLocalRx;
+  uint32_t tickCountRemote = fixWrapAroundIfNeeded(prevRemoteTx, remoteTx) - prevRemoteTx;
+  uint32_t tickCountLocal = fixWrapAroundIfNeeded(prevLocalRx, localRx) - prevLocalRx;
 
-  if (tickCountRemote != 0) {
+  if (tickCountRemote > 0) {
     result = (double)tickCountLocal / (double)tickCountRemote;
   }
 
@@ -147,10 +157,10 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
       uint64_t prevLocalRx = neighbourData->localRx;
 
       // Calculations
-      uint32_t remoteReply = remoteTx - remoteRx;
+      uint32_t remoteReply = fixWrapAroundIfNeeded(remoteRx, remoteTx) - remoteRx;
       double clockCorrection = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
       uint32_t localReply = remoteReply * clockCorrection;
-      uint32_t localRound = localRx - localTx;
+      uint32_t localRound = fixWrapAroundIfNeeded(localTx, localRx) - localTx;
 
       // Verify the obtained results are correct
       neighbourData->tof = (localRound - localReply) / 2;
