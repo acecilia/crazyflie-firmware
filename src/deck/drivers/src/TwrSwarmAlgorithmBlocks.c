@@ -179,7 +179,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
   }
 
   // Save the remoteTx, so we can use it to calculate the clockCorrection
-  neighbourData->remoteTx = rxPacket->tx;
+  neighbourData->remoteTx = remoteTx;
   // Save the localRx, so we can calculate localReply when responding in the future
-  neighbourData->localRx = rxTimestamp.full;
+  neighbourData->localRx = localRx;
 }
