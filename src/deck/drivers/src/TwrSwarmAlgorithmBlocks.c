@@ -86,7 +86,7 @@ neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id) {
   }
 }
 
-unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoId_t sourceId, uint64_t localTx) {
+unsigned int allocAndFillTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoId_t sourceId) {
   // Packet creation
   unsigned int payloadLength = dict_count(dct);
   unsigned int txPacketLength = sizeof(lpsSwarmPacket_t) + payloadLength * sizeof(payload_t);
@@ -94,8 +94,8 @@ unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoI
   *txPacketPointer = pvPortMalloc(txPacketLength);
 
   lpsSwarmPacket_t* txPacket = *txPacketPointer; // Declared for convenience and cleaner code
+  txPacket->tx = 0; // This will be filled after allocating and filling the txPacket, and inmediatelly before starting the transmission. For now, we zero it.
   txPacket->sourceId = sourceId;
-  txPacket->tx = localTx;
   txPacket->payloadLength = payloadLength;
 
   if (payloadLength > 0) {

@@ -48,12 +48,14 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmP
 
     // Is its turn to send data
 
-    // Local values
+    // Create txPacket
+    lpsSwarmPacket_t* txPacket;
+    unsigned int txPacketLength = allocAndFillTxPacket(&txPacket, ctx.dct, localId);
+
+    // Set tx time inside txPacket
     dwTime_t tx = findTransmitTimeAsSoonAsPossible(dev);
     uint64_t localTx = tx.full;
-
-    lpsSwarmPacket_t* txPacket;
-    unsigned int txPacketLength = createTxPacket(&txPacket, ctx.dct, localId, localTx);
+    txPacket->tx = localTx;
 
     // Set data
     dwSetData(dev, (uint8_t*)txPacket, txPacketLength);

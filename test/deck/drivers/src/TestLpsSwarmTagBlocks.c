@@ -159,25 +159,23 @@ void testGetDataForNeighbourWithFilledDictionaryAndDifferentKeys() {
   TEST_ASSERT_NOT_EQUAL(&initialData, result);
 }
 
-void testCreateTxPacketWithoutPayload() {
+void testAllocAndFillTxPacketWithoutPayload() {
   dict* dct = testCreateTestDictionary();
-  uint64_t localTx = 12345;
   locoId_t sourceId = 6;
   unsigned int expectedTxPacketLength = sizeof(lpsSwarmPacket_t);
 
   // Create package
   lpsSwarmPacket_t* txPacket = NULL;
-  unsigned int txPacketLength = createTxPacket(&txPacket, dct, sourceId, localTx);
+  unsigned int txPacketLength = allocAndFillTxPacket(&txPacket, dct, sourceId);
 
   TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
   TEST_ASSERT_EQUAL_UINT8(sourceId, txPacket->sourceId);
-  TEST_ASSERT_EQUAL_UINT64(localTx, txPacket->tx);
+  TEST_ASSERT_EQUAL_UINT64(0, txPacket->tx);
   TEST_ASSERT_EQUAL_UINT8(0, txPacket->payloadLength);
 }
 
-void testCreateTxPacketWithPayload() {
+void testAllocAndFillTxPacketWithPayload() {
   dict* dct = testCreateTestDictionary();
-  uint64_t localTx = 12345;
   locoId_t sourceId = 6;
 
   // Fill dictionary
@@ -190,12 +188,12 @@ void testCreateTxPacketWithPayload() {
 
   // Create package
   lpsSwarmPacket_t* txPacket = NULL;
-  unsigned int txPacketLength = createTxPacket(&txPacket, dct, sourceId, localTx);
+  unsigned int txPacketLength = allocAndFillTxPacket(&txPacket, dct, sourceId);
 
   // Verify result
   TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
   TEST_ASSERT_EQUAL_UINT8(sourceId, txPacket->sourceId);
-  TEST_ASSERT_EQUAL_UINT64(localTx, txPacket->tx);
+  TEST_ASSERT_EQUAL_UINT64(0, txPacket->tx);
   TEST_ASSERT_EQUAL_UINT8(elementsCount, txPacket->payloadLength);
   for (uint8_t i = 0; i < elementsCount; i++) {
     payload_t* pair = testFindPairInPayload(txPacket, i);
