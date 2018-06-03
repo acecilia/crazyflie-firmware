@@ -23,6 +23,8 @@
 
 // Test helper functions
 
+#define DW1000_MAXIMUM_COUNT (uint64_t)( 1099511627775 ) //The maximum timestamp the DW1000 can return (40 bits: 2^40 - 1)
+
 /**
  Create a dictionary. Used for avoiding code duplication
  */
@@ -68,9 +70,9 @@ void testAdjustTxRxTime() {
   TEST_ASSERT_EQUAL_UINT64(expectedValue, time.full);
 }
 
-void testFindTransmitTimeAsSoonAsPossible() {
-  dwTime_t initialValue = { .full = 12345 };
-  dwTime_t expectedValue = { .full = 27568640 };
+void testFindTransmitTimeAsSoonAsPossibleWithZeroInitialValue() {
+  dwTime_t initialValue = { .full = 0 };
+  uint64_t expectedValue = 27556352;
 
   dwDevice_t dummyDev;
   dwTime_t dummyValue;
@@ -81,7 +83,58 @@ void testFindTransmitTimeAsSoonAsPossible() {
 
   dwTime_t time = findTransmitTimeAsSoonAsPossible(&dummyDev);
   
-  TEST_ASSERT_EQUAL_UINT64(expectedValue.full, time.full);
+  TEST_ASSERT_EQUAL_UINT64(expectedValue, time.full);
+}
+
+void testFindTransmitTimeAsSoonAsPossibleWithLowInitialValue() {
+  uint64_t expectedValueWithZeroInitialValue = 27556352;
+  dwTime_t initialValue = { .full = 40000000 };
+  uint64_t expectedValue = expectedValueWithZeroInitialValue + initialValue.full;
+
+  dwDevice_t dummyDev;
+  dwTime_t dummyValue;
+  dwGetSystemTimestamp_Expect(&dummyDev, &dummyValue);
+  dwGetSystemTimestamp_IgnoreArg_dev();
+  dwGetSystemTimestamp_IgnoreArg_time();
+  dwGetSystemTimestamp_ReturnThruPtr_time(&initialValue);
+
+  dwTime_t time = findTransmitTimeAsSoonAsPossible(&dummyDev);
+
+  TEST_ASSERT_EQUAL_UINT64(expectedValue, time.full);
+}
+
+void testFindTransmitTimeAsSoonAsPossibleWithHighInitialValueWithoutWrappingArround() {
+  uint64_t expectedValueWithZeroInitialValue = 27556352;
+  dwTime_t initialValue = { .full = DW1000_MAXIMUM_COUNT - expectedValueWithZeroInitialValue * 2 };
+  uint64_t expectedValue = 1099484071424; // Approximatelly: expectedValueWithZeroInitialValue + initialValue.full = 1099484071423
+
+  dwDevice_t dummyDev;
+  dwTime_t dummyValue;
+  dwGetSystemTimestamp_Expect(&dummyDev, &dummyValue);
+  dwGetSystemTimestamp_IgnoreArg_dev();
+  dwGetSystemTimestamp_IgnoreArg_time();
+  dwGetSystemTimestamp_ReturnThruPtr_time(&initialValue);
+
+  dwTime_t time = findTransmitTimeAsSoonAsPossible(&dummyDev);
+
+  TEST_ASSERT_EQUAL_UINT64(expectedValue, time.full);
+}
+
+void testFindTransmitTimeAsSoonAsPossibleHighInitialValueAndWrappingAround() {
+  uint64_t expectedValueWithZeroInitialValue = 27556352;
+  dwTime_t initialValue = { .full = DW1000_MAXIMUM_COUNT - expectedValueWithZeroInitialValue / 2 };
+  uint64_t expectedValue = 13778944; // Approximatelly: expectedValueWithZeroInitialValue + initialValue.full (counting the wrapping) = expectedValueWithZeroInitialValue / 2 = 13778176
+
+  dwDevice_t dummyDev;
+  dwTime_t dummyValue;
+  dwGetSystemTimestamp_Expect(&dummyDev, &dummyValue);
+  dwGetSystemTimestamp_IgnoreArg_dev();
+  dwGetSystemTimestamp_IgnoreArg_time();
+  dwGetSystemTimestamp_ReturnThruPtr_time(&initialValue);
+
+  dwTime_t time = findTransmitTimeAsSoonAsPossible(&dummyDev);
+
+  TEST_ASSERT_EQUAL_UINT64(expectedValue, time.full);
 }
 
 void testCalculateClockCorrectionWithValidInputData() {

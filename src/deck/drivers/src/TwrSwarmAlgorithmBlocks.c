@@ -53,7 +53,7 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
 
   adjustTxRxTime(&transmitTime);
 
-  // If the planned transmit time wraps around, recalculate it. This is probably not necessary for the dw1000 chip (since the bits further than the 40th will be discarded), but the tx timestamp is also included inside the packets, and is expected to contain the tx value wrapped around
+  // If the planned transmit time wraps around, recalculate it. This is probably not necessary for the dw1000 chip (since the bits higher than the 40th will be discarded), but the tx timestamp is also included inside the packets, and is expected to contain the proper tx value (not higher than 2^40 - 1)
   if (transmitTime.full >= DW1000_MAXIMUM_COUNT) {
     transmitTime.full = transmitTime.full - DW1000_MAXIMUM_COUNT;
     adjustTxRxTime(&transmitTime);
