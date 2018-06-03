@@ -85,6 +85,7 @@ static void initiateRanging(dwDevice_t *dev) {
 
 static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 {
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
   debug.blink(LED_BLUE_L);
 
   switch(event) {
@@ -105,6 +106,7 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
     default:
       break;
   }
+#endif
 
   switch(event) {
     case eventPacketReceived:

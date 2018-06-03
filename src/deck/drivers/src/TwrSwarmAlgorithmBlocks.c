@@ -15,6 +15,10 @@
 #define TDMA_EXTRA_LENGTH_S ( 300e-6 )
 #define TDMA_EXTRA_LENGTH (uint64_t)( TDMA_EXTRA_LENGTH_S * 499.2e6 * 128 )
 
+locoId_t getId(locoAddress_t address) {
+  return address & 0xff;
+}
+
 // Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0, and round the result up
 uint32_t adjustTxRxTime(dwTime_t *time) {
   uint32_t added = (1<<9) - (time->low32 & ((1<<9)-1));
@@ -66,13 +70,13 @@ double calculateClockCorrection(uint64_t prevRemoteTx, uint64_t remoteTx, uint64
   return result;
 }
 
-neighbourData_t* getDataForNeighbour(dict* dct, locoAddress_t address) {
-  void** search_result = dict_search(dct, &address);
+neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id) {
+  void** search_result = dict_search(dct, &id);
   if (search_result) {
     return (neighbourData_t *)*search_result;
   } else {
-    locoAddress_t* key = pvPortMalloc(sizeof(locoAddress_t));
-    *key = address;
+    locoAddress_t* key = pvPortMalloc(sizeof(locoId_t));
+    *key = id;
 
     neighbourData_t* data = pvPortMalloc(sizeof(neighbourData_t));
     data->localRx = 0;
@@ -85,27 +89,27 @@ neighbourData_t* getDataForNeighbour(dict* dct, locoAddress_t address) {
   }
 }
 
-unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoAddress_t sourceAddress, uint64_t localTx) {
+unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoId_t sourceId, uint64_t localTx) {
   // Packet creation
-  unsigned int rxLength = dict_count(dct);
-  unsigned int txPacketLength = sizeof(lpsSwarmPacket_t) + rxLength * sizeof(addressTimePair_t);
+  unsigned int payloadLength = dict_count(dct);
+  unsigned int txPacketLength = sizeof(lpsSwarmPacket_t) + payloadLength * sizeof(payload_t);
 
   *txPacketPointer = pvPortMalloc(txPacketLength);
 
   lpsSwarmPacket_t* txPacket = *txPacketPointer; // Declared for convenience and cleaner code
-  txPacket->sourceAddress = sourceAddress;
+  txPacket->sourceId = sourceId;
   txPacket->tx = localTx;
-  txPacket->payloadLength = rxLength;
+  txPacket->payloadLength = payloadLength;
 
-  if (rxLength > 0) {
+  if (payloadLength > 0) {
     // Get data from the dict and into the txPacket array
     dict_itor *itor = dict_itor_new(dct);
     dict_itor_first(itor);
-    for (unsigned int i = 0; i < rxLength; i++) {
-      locoAddress_t key = *(locoAddress_t*)dict_itor_key(itor);
+    for (unsigned int i = 0; i < payloadLength; i++) {
+      locoId_t key = *(locoId_t*)dict_itor_key(itor);
       neighbourData_t* data = (neighbourData_t*)*dict_itor_datum(itor);
-      addressTimePair_t pair = {
-        .address = key,
+      payload_t pair = {
+        .id = key,
         .time = data->localRx
       };
 
@@ -119,10 +123,10 @@ unsigned int createTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoA
   return txPacketLength;
 }
 
-void processRxPacket(dwDevice_t *dev, locoAddress_t localAddress, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t lastKnownLocalTxTimestamp) {
+void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t lastKnownLocalTxTimestamp) {
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
-  neighbourData_t* neighbourData = getDataForNeighbour(dct, rxPacket->sourceAddress);
+  neighbourData_t* neighbourData = getDataForNeighbour(dct, rxPacket->sourceId);
 
   // Timestamp remote values
   uint64_t remoteTx = rxPacket->tx;
@@ -131,7 +135,7 @@ void processRxPacket(dwDevice_t *dev, locoAddress_t localAddress, lpsSwarmPacket
   uint64_t localRx = rxTimestamp.full;
 
   for(int i = 0; i < rxPacket->payloadLength; i++) {
-    if (rxPacket->payload[i].address == localAddress) { // To be executed only once
+    if (rxPacket->payload[i].id == localId) { // To be executed only once
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       debug.succededRangingPerSec++;

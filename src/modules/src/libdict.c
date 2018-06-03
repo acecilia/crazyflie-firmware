@@ -45,23 +45,6 @@ unsigned dict_uint8_hash(const void* k) {
 }
 
 /**
- Comparator between two uint64_t values
- */
-int dict_uint64_cmp(const void *k1, const void *k2) {
-  const uint64_t a = *(const uint64_t*)k1;
-  const uint64_t b = *(const uint64_t*)k2;
-  return (a > b) - (a < b);
-}
-
-/**
- Hash function of an uint64_t value
- TODO: this is not safe! You can not reliably generate a uint32_t hash from a uint64_t type
- */
-unsigned int dict_uint64_hash(const void* k) {
-  return *(unsigned int*)k;
-}
-
-/**
  Hash function of an unsigned int value
  */
 unsigned dict_uint_hash(const void* k) {

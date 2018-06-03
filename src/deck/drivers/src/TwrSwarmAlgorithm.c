@@ -20,7 +20,7 @@ static void init() {
   configure_dict_malloc();
 
   // Initialize the dictionary storing the rangings
-  ctx.dct = hashtable2_dict_new(dict_uint64_cmp, dict_uint64_hash, 10);
+  ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10);
 }
 
 static void initiateRanging(dwDevice_t *dev) {
@@ -35,8 +35,10 @@ static void initiateRanging(dwDevice_t *dev) {
 }
 
 static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmPacket_t* rxPacket, unsigned int dataLength) {
+  locoId_t localId = getId(options->tagAddress);
+
   if (dataLength > 0) {
-    processRxPacket(dev, options->tagAddress, rxPacket, ctx.dct, ctx.localTx);
+    processRxPacket(dev, localId, rxPacket, ctx.dct, ctx.localTx);
   }
 
   if (true) {
@@ -51,7 +53,7 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmP
     uint64_t localTx = tx.full;
 
     lpsSwarmPacket_t* txPacket;
-    unsigned int txPacketLength = createTxPacket(&txPacket, ctx.dct, options->tagAddress, localTx);
+    unsigned int txPacketLength = createTxPacket(&txPacket, ctx.dct, localId, localTx);
 
     // Set data
     dwSetData(dev, (uint8_t*)txPacket, txPacketLength);

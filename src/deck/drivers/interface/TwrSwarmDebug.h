@@ -1,7 +1,6 @@
 #ifndef TwrSwarmDebug_h
 #define TwrSwarmDebug_h
 
-#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include <stdint.h>
 #include "led.h"
 
@@ -25,9 +24,10 @@ typedef struct {
   uint32_t measurementFailure;
   
   void (*blink)(led_t led);
-  void (*init)();
+  void (*init)(void);
 } debug_t;
 
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 extern debug_t debug;
 #endif
 

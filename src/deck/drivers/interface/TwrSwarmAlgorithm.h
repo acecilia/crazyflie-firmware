@@ -5,23 +5,25 @@
 #include "locodeck.h"
 #include "libdict.h"
 
+typedef uint8_t locoId_t;
+
 /**
- A type that relates an address with some associated information
+ A type that relates the id of a drone with some associated information
  */
 typedef struct {
-  locoAddress_t address;
+  locoId_t id;
   uint64_t time;
-} __attribute__((packed)) addressTimePair_t;
+} __attribute__((packed)) payload_t;
 
 /**
  A type that encapsulates the data included in a packet
  */
 typedef struct {
-  locoAddress_t sourceAddress;
+  locoId_t sourceId;
   uint64_t tx;
 
   uint8_t payloadLength; // Allows a logic limit of 256 pairs (which limits the maximum number of drones participating in the swarm to 256)
-  addressTimePair_t payload[];
+  payload_t payload[];
 } __attribute__((packed)) lpsSwarmPacket_t;
 
 /**
