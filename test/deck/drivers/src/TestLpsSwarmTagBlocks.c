@@ -236,7 +236,7 @@ void testProcessRxPacketWithPayload() {
 
   // Expected values: giving them pair values we ensure proper integer operations (mainly division) when calculating the actual values
   uint32_t tof = 4 * 10000;                             // Tof meassured by local clock
-  double clockCorrection = 1.00001;                     // Local clock works <clockCorrection> times faster than remote clock
+  double clockCorrection = 1.0 + 10e-6;                 // Local clock works <clockCorrection> times faster than remote clock
   uint32_t localReply = 4 * 10000;                      // Local reply time meassured by local clock
   uint32_t remoteReply = localReply / clockCorrection;  // Remote reply time meassured by Remote clock
 
@@ -290,7 +290,7 @@ void testProcessRxPacketWithPayload() {
   TEST_ASSERT_EQUAL_UINT64(remoteTx, currentNeighbourData->remoteTx);
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
   TEST_ASSERT_EQUAL_UINT32(tof - 1, currentNeighbourData->tof); // The -1 is required, because in the conversion between double and integer the system cuts the number down
-  TEST_ASSERT_DOUBLE_WITHIN(0.00001, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection);
+  TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue
   TEST_ASSERT_EQUAL_UINT(1, currentNeighbourData->clockCorrectionStorage.clockCorrectionBucket);
 }
 
