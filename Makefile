@@ -72,6 +72,7 @@ VPATH_CF2 += $(LIB)/CMSIS/STM32F4xx/Source/
 VPATH_CF2 += $(LIB)/STM32_USB_Device_Library/Core/src
 VPATH_CF2 += $(LIB)/STM32_USB_OTG_Driver/src
 VPATH_CF2 += src/deck/api src/deck/core src/deck/drivers/src src/deck/drivers/src/test
+VPATH_CF2 += src/deck/drivers/src/clockCorrection
 CRT0_CF2 = startup_stm32f40xx.o system_stm32f4xx.o
 
 # Should maybe be in separate file?
@@ -190,6 +191,7 @@ PROJ_OBJ_CF2 += cppmdeck.o
 PROJ_OBJ_CF2 += usddeck.o
 PROJ_OBJ_CF2 += zranger.o zranger2.o
 PROJ_OBJ_CF2 += locodeck.o
+PROJ_OBJ_CF2 += clockCorrectionFunctions.o clockCorrectionEngine.o
 PROJ_OBJ_CF2 += lpsTwrTag.o
 PROJ_OBJ_CF2 += lpsTdoa2Tag.o
 PROJ_OBJ_CF2 += lpsTdoa3Tag.o lpsTdoaTagEngine.o lpsTdoaTagStats.o
@@ -248,6 +250,7 @@ INCLUDES_CF2 += -I$(LIB)/CMSIS/STM32F4xx/Include
 INCLUDES_CF2 += -I$(LIB)/STM32_USB_Device_Library/Core/inc
 INCLUDES_CF2 += -I$(LIB)/STM32_USB_OTG_Driver/inc
 INCLUDES_CF2 += -Isrc/deck/interface -Isrc/deck/drivers/interface
+INCLUDES_CF2 += -Isrc/deck/drivers/interface/clockCorrection
 INCLUDES_CF2 += -Ivendor/libdw1000/inc
 INCLUDES_CF2 += -Ivendor/libdict/include
 INCLUDES_CF2 += -I$(LIB)/FatFS
@@ -268,6 +271,8 @@ STFLAGS_CF2 = -DSTM32F4XX -DSTM32F40_41xxx -DHSE_VALUE=8000000 -DUSE_STDPERIPH_D
 
 ifeq ($(DEBUG), 1)
   CFLAGS += -O0 -g3 -DDEBUG
+  # Prevent silent errors when converting between types (requires explicit casting)
+  CFLAGS += -Wconversion
 else
 	# Fail on warnings
   CFLAGS += -Os -g3 -Werror
@@ -333,12 +338,12 @@ endif
 
 
 all: check_submodules build
-build: 
+build:
 # Each target is in a different line, so they are executed one after the other even when the processor has multiple cores (when the -j option for the make command is > 1). See: https://www.gnu.org/software/make/manual/html_node/Parallel.html
-	@$(MAKE) clean_version
-	@$(MAKE) compile
-	@$(MAKE) print_version 
-	@$(MAKE) size
+	@$(MAKE) --no-print-directory clean_version
+	@$(MAKE) --no-print-directory compile
+	@$(MAKE) --no-print-directory print_version
+	@$(MAKE) --no-print-directory size
 compile: $(PROG).hex $(PROG).bin $(PROG).dfu
 
 libarm_math.a:

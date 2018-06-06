@@ -21,6 +21,7 @@ static void init() {
 
   // Initialize the dictionary storing the rangings
   ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10);
+  ctx.localTx = 0;
 }
 
 static void initiateRanging(dwDevice_t *dev) {

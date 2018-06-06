@@ -4,6 +4,7 @@
 #include "libdw1000.h"
 #include "locodeck.h"
 #include "libdict.h"
+#include "clockCorrectionStorage.h"
 
 typedef uint8_t locoId_t;
 
@@ -30,9 +31,11 @@ typedef struct {
  A type that encapsulates the information stored in the dictionary
  */
 typedef struct {
-  // Values to calculate clockDrift
+  // Values to calculate clockCorrection
   uint64_t localRx; // To be set after reception
   uint64_t remoteTx; // To be set after reception
+
+  clockCorrectionStorage_t clockCorrectionStorage;
 
   uint32_t tof; // To be set after reception
 } __attribute__((packed)) neighbourData_t;

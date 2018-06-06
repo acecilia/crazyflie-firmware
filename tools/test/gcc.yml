@@ -28,6 +28,8 @@ compiler:
       - 'vendor/libdict/src/'
       - 'src/deck/drivers/interface/'
       - 'src/deck/drivers/src/'
+      - 'src/deck/drivers/interface/clockCorrection/'
+      - 'src/deck/drivers/src/clockCorrection/'
       - 'src/utils/interface/'
       - 'src/utils/src/'
       - 'src/lib/FreeRTOS/include/'

@@ -5,9 +5,16 @@
 #include "led.h"
 
 typedef struct {
+  float localRx;
+  float localTx;
+  float remoteRx;
+  float remoteTx;
+
   uint32_t remoteReply;
   uint32_t localReply;
   uint32_t localRound;
+  float clockCorrection;
+  float clockCorrectionCandidate;
 
   uint32_t tof;
 
@@ -19,8 +26,7 @@ typedef struct {
   uint32_t auxiliaryValue;
   
   uint32_t measurementFailure;
-  uint32_t dw1000WrapAroundCount;
-  
+
   void (*blink)(led_t led);
   void (*init)(void);
 } debug_t;

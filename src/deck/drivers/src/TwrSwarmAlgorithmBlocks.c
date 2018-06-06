@@ -1,4 +1,5 @@
 #include "TwrSwarmAlgorithmBlocks.h"
+#include "clockCorrectionEngine.h"
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
@@ -17,27 +18,14 @@
 
 #define DW1000_MAXIMUM_COUNT (uint64_t)( 0xffffffffff ) //The maximum timestamp the DW1000 can return (40 bits)
 
-/**
- The DW1000 has a 40 bits register to store the timestamp values. When the timestamp is higher than what is possible to store in those 40 bits, the count wraps around, despite a uint64_t value having enough bits to represent the number. This function reverses the wrap around.
- */
-static uint64_t fixDW1000WrapAroundIfNeeded(uint64_t minimumValue, uint64_t valueToFix) {
-  if (minimumValue >= valueToFix) {
-#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-    debug.dw1000WrapAroundCount++;
-#endif
-    return DW1000_MAXIMUM_COUNT + valueToFix;
-  } else {
-    return valueToFix;
-  }
-}
-
 locoId_t getId(locoAddress_t address) {
   return address & 0xff;
 }
 
 // Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0, and round the result up
 void adjustTxRxTime(dwTime_t *time) {
-  time->full = (time->full & ~((1 << 9) - 1)) + (1 << 9);
+  uint64_t mask = (1 << 9) - 1;
+  time->full = (time->full & ~mask) + (1 << 9);
 }
 
 dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
@@ -62,23 +50,6 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   return transmitTime;
 }
 
-double calculateClockCorrection(uint64_t prevRemoteTx, uint64_t remoteTx, uint64_t prevLocalRx, uint64_t localRx) {
-  if (prevRemoteTx == 0 || remoteTx == 0 || prevLocalRx == 0 || localRx == 0) {
-    return 1;
-  }
-
-  double result = 1;
-
-  uint32_t tickCountRemote = fixDW1000WrapAroundIfNeeded(prevRemoteTx, remoteTx) - prevRemoteTx;
-  uint32_t tickCountLocal = fixDW1000WrapAroundIfNeeded(prevLocalRx, localRx) - prevLocalRx;
-
-  if (tickCountRemote > 0) {
-    result = (double)tickCountLocal / (double)tickCountRemote;
-  }
-
-  return result;
-}
-
 neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id) {
   void** search_result = dict_search(dct, &id);
   if (search_result) {
@@ -90,6 +61,8 @@ neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id) {
     neighbourData_t* data = pvPortMalloc(sizeof(neighbourData_t));
     data->localRx = 0;
     data->remoteTx = 0;
+    data->clockCorrectionStorage.clockCorrection = 1;
+    data->clockCorrectionStorage.clockCorrectionBucket = 0;
     data->tof = 0;
 
     dict_insert_result insert_result = dict_insert(dct, key);
@@ -100,7 +73,7 @@ neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id) {
 
 unsigned int allocAndFillTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoId_t sourceId) {
   // Packet creation
-  unsigned int payloadLength = dict_count(dct);
+  uint8_t payloadLength = dict_count(dct);
   unsigned int txPacketLength = sizeof(lpsSwarmPacket_t) + payloadLength * sizeof(payload_t);
 
   *txPacketPointer = pvPortMalloc(txPacketLength);
@@ -159,10 +132,14 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
       const uint64_t prevLocalRx = neighbourData->localRx;
 
       // Calculations
-      const uint32_t remoteReply = fixDW1000WrapAroundIfNeeded(remoteRx, remoteTx) - remoteRx;
-      const double clockCorrection = calculateClockCorrection(prevRemoteTx, remoteTx, prevLocalRx, localRx);
-      const uint32_t localReply = remoteReply * clockCorrection;
-      const uint32_t localRound = fixDW1000WrapAroundIfNeeded(localTx, localRx) - localTx;
+      const uint32_t remoteReply = (uint32_t)(remoteTx - remoteRx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
+
+      const double clockCorrectionCandidate = clockCorrectionEngine.calculateClockCorrection(localRx, prevLocalRx, remoteTx, prevRemoteTx);
+      clockCorrectionEngine.updateClockCorrection(&neighbourData->clockCorrectionStorage, clockCorrectionCandidate);
+      const double clockCorrection = clockCorrectionEngine.getClockCorrection(&neighbourData->clockCorrectionStorage);
+
+      const uint32_t localReply = (uint32_t)(remoteReply * clockCorrection);
+      const uint32_t localRound = (uint32_t)(localRx - localTx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
 
       // Verify the obtained results are correct
       neighbourData->tof = (localRound - localReply) / 2;
@@ -170,15 +147,19 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       if (localReply > localRound) {
         debug.measurementFailure++;
+
+        debug.localRx = localRx;
+        debug.localTx = localTx;
+        debug.remoteRx = remoteRx;
+        debug.remoteTx = remoteTx;
+
+        debug.remoteReply = remoteReply;
+        debug.localReply = localReply;
+        debug.localRound = localRound;
       }
 
-      if (neighbourData->tof > 34000) {
-        debug.auxiliaryValue = remoteReply;
-      }
-
-      debug.remoteReply = remoteReply;
-      debug.localReply = localReply;
-      debug.localRound = localRound;
+      debug.clockCorrectionCandidate = clockCorrectionCandidate * 10000;
+      debug.clockCorrection = clockCorrection * 10000;
 
       debug.tof = neighbourData->tof;
 

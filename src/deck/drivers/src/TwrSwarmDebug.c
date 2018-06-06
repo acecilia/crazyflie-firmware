@@ -8,9 +8,16 @@ static void blink(led_t led);
 static void init();
 
 debug_t debug = {
+  .localRx = 100,
+  .localTx = 200,
+  .remoteRx = 300,
+  .remoteTx = 400,
+
   .remoteReply = 1000,
   .localReply = 2000,
   .localRound = 3000,
+  .clockCorrection = 3800,
+  .clockCorrectionCandidate = 3900,
 
   .tof = 4000,
 
@@ -22,7 +29,6 @@ debug_t debug = {
   .auxiliaryValue = 8000, // To log something fast without the need of created the necessary logging code for it
 
   .measurementFailure = 0,
-  .dw1000WrapAroundCount = 0,
 
   .blink = blink,
   .init = init
@@ -83,19 +89,25 @@ static void init() {
 }
 
 LOG_GROUP_START(twrSwarm)
+LOG_ADD(LOG_FLOAT, localRx, &debug.localRx)
+LOG_ADD(LOG_FLOAT, localTx, &debug.localTx)
+LOG_ADD(LOG_FLOAT, remoteRx, &debug.localRx)
+LOG_ADD(LOG_FLOAT, remoteTx, &debug.localTx)
+
 LOG_ADD(LOG_UINT32, remoteReply, &debug.remoteReply)
 LOG_ADD(LOG_UINT32, localReply, &debug.localReply)
 LOG_ADD(LOG_UINT32, localRound, &debug.localRound)
+// LOG_ADD(LOG_FLOAT, ckCorr, &debug.clockCorrection)
+// LOG_ADD(LOG_FLOAT, ckCorrCandidate, &debug.clockCorrectionCandidate)
 
 LOG_ADD(LOG_UINT32, tof, &debug.tof)
 
-LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
+// LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
 
-LOG_ADD(LOG_UINT16, rangingPerSec, &lastKnownTotalRangingPerSec)
-LOG_ADD(LOG_UINT16, okRangingPerSec, &lastKnownSuccededRangingPerSec)
+// LOG_ADD(LOG_UINT16, rangingPerSec, &lastKnownTotalRangingPerSec)
+// LOG_ADD(LOG_UINT16, okRangingPerSec, &lastKnownSuccededRangingPerSec)
 
-LOG_ADD(LOG_UINT32, auxiliaryValue, &debug.auxiliaryValue)
+// LOG_ADD(LOG_UINT32, auxiliaryValue, &debug.auxiliaryValue)
 
 LOG_ADD(LOG_UINT32, measurementFail, &debug.measurementFailure)
-LOG_ADD(LOG_UINT32, wrapAround, &debug.dw1000WrapAroundCount)
 LOG_GROUP_STOP(twrSwarm)
