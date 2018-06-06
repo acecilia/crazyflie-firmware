@@ -3,7 +3,8 @@
 
 #include "TwrSwarmAlgorithm.h"
 
-locoId_t getId(locoAddress_t address);
+locoId_t generateId(void);
+locoId_t generateIdNotInPacket(lpsSwarmPacket_t* packet);
 void adjustTxRxTime(dwTime_t *time);
 dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev);
 neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id);

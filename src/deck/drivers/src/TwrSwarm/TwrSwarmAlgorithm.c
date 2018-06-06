@@ -11,6 +11,8 @@
 static struct {
   dict *dct;
 
+  locoId_t localId;
+
   // Values to calculate t_round
   uint64_t localTx; // To be set after transmission
 } ctx;
@@ -21,6 +23,7 @@ static void init() {
 
   // Initialize the dictionary storing the rangings
   ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10);
+  ctx.localId = generateId();
   ctx.localTx = 0;
 }
 
@@ -36,10 +39,13 @@ static void initiateRanging(dwDevice_t *dev) {
 }
 
 static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmPacket_t* rxPacket, unsigned int dataLength) {
-  locoId_t localId = getId(options->tagAddress);
-
   if (dataLength > 0) {
-    processRxPacket(dev, localId, rxPacket, ctx.dct, ctx.localTx);
+    // Makes sure the id is unique among the neighbours around, and regenerate it only if the local ranging information is less than the information coming on the packet
+    if (rxPacket->sourceId == ctx.localId && dict_count(ctx.dct) <= rxPacket->payloadLength) {
+      ctx.localId = generateIdNotInPacket(rxPacket);
+    }
+
+    processRxPacket(dev, ctx.localId, rxPacket, ctx.dct, ctx.localTx);
   }
 
   if (true) {
@@ -51,7 +57,7 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmP
 
     // Create txPacket
     lpsSwarmPacket_t* txPacket;
-    unsigned int txPacketLength = allocAndFillTxPacket(&txPacket, ctx.dct, localId);
+    unsigned int txPacketLength = allocAndFillTxPacket(&txPacket, ctx.dct, ctx.localId);
 
     // Set tx time inside txPacket
     dwTime_t tx = findTransmitTimeAsSoonAsPossible(dev);

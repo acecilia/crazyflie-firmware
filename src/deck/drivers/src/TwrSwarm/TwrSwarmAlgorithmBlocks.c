@@ -1,5 +1,6 @@
 #include "TwrSwarmAlgorithmBlocks.h"
 #include "clockCorrectionEngine.h"
+#include <stdlib.h>
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
@@ -18,11 +19,37 @@
 
 #define DW1000_MAXIMUM_COUNT (uint64_t)( 0xffffffffff ) //The maximum timestamp the DW1000 can return (40 bits)
 
-locoId_t getId(locoAddress_t address) {
-  return address & 0xff;
+/**
+ Generates a random id, to be used on the packets
+ */
+locoId_t generateId() {
+  return (locoId_t)rand();
 }
 
-// Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0, and round the result up
+/**
+ Generates a random id which is not found in the provided packet
+ */
+locoId_t generateIdNotInPacket(lpsSwarmPacket_t* packet) {
+  locoId_t cantidateId = generateId();
+
+  // Makes sure the cantidateId is not the source of the packet
+  while(packet->sourceId == cantidateId) {
+    cantidateId = generateId();
+  }
+
+  // Makes sure the cantidateId is not any of the destination ids on the packet
+  for(int i = 0; i < packet->payloadLength; i++) {
+    if (packet->payload[i].id == cantidateId) {
+      return generateIdNotInPacket(packet);
+    }
+  }
+
+  return cantidateId;
+}
+
+/**
+ Adjust time for schedule transfer by DW1000 radio. Set 9 LSB to 0, and round the result up
+ */
 void adjustTxRxTime(dwTime_t *time) {
   uint64_t mask = (1 << 9) - 1;
   time->full = (time->full & ~mask) + (1 << 9);
