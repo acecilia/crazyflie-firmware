@@ -30,6 +30,8 @@ compiler:
       - 'src/deck/drivers/src/'
       - 'src/deck/drivers/interface/clockCorrection/'
       - 'src/deck/drivers/src/clockCorrection/'
+      - 'src/deck/drivers/interface/TwrSwarm/'
+      - 'src/deck/drivers/src/TwrSwarm/'
       - 'src/utils/interface/'
       - 'src/utils/src/'
       - 'src/lib/FreeRTOS/include/'
