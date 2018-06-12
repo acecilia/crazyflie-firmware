@@ -13,6 +13,8 @@ static struct {
 
   locoId_t localId;
 
+  // Add packet sequence number
+
   // Values to calculate t_round
   uint64_t localTx; // To be set after transmission
 } ctx;
