@@ -1,7 +1,10 @@
+/**
+ Exposes the randomizedTimer_t type, that represents the storage required for working with a randomizedTimer.
+ */
+
 #ifndef randomizedTimer_h
 #define randomizedTimer_h
 
-#include <stdint.h>
 #include "FreeRTOS.h"
 #include "timers.h"
 
