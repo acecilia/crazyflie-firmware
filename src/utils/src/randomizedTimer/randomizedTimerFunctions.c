@@ -1,4 +1,4 @@
-#include "RandomizedTimerFunctions.h"
+#include "randomizedTimerFunctions.h"
 #include <stdlib.h>
 
 static TickType_t ticksPerSecond = M2T(1000);
