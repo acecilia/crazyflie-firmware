@@ -3,8 +3,7 @@
 
 static TickType_t ticksPerSecond = M2T(1000);
 
-void init(randomizedTimer_t* randomizedTimer, uint16_t frequency, void (*callback)(void)) {
-  setFrequency(randomizedTimer, frequency);
+void init(randomizedTimer_t* randomizedTimer, void (*callback)(void)) {
   randomizedTimer->callback = callback;
 
   // If FreeRTOS is updated to v9.0.0, it is possible to use xTimerCreateStatic instead of xTimerCreate
