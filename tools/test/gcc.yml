@@ -30,6 +30,8 @@ compiler:
       - 'src/deck/drivers/src/'
       - 'src/utils/interface/clockCorrection/'
       - 'src/utils/src/clockCorrection/'
+      - 'src/utils/interface/randomizedTimer/'
+      - 'src/utils/src/randomizedTimer/'
       - 'src/deck/drivers/interface/TwrSwarm/'
       - 'src/deck/drivers/src/TwrSwarm/'
       - 'src/utils/interface/'
