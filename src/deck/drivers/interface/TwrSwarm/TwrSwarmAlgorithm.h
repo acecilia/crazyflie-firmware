@@ -17,13 +17,20 @@ typedef struct {
 } __attribute__((packed)) payload_t;
 
 /**
- A type that encapsulates the data included in a packet
+ A type that encapsulates the data included in the header of a packet
  */
 typedef struct {
   locoId_t sourceId;
   uint64_t tx; // TODO: see if we can reduce the size of data type
 
   uint8_t payloadLength; // Allows a logic limit of 256 pairs (which limits the maximum number of drones participating in the swarm to 256)
+} __attribute__((packed)) lpsSwarmPacketHeader_t;
+
+/**
+ A type that encapsulates the data included in a packet
+ */
+typedef struct {
+  lpsSwarmPacketHeader_t header;
 
   uint8_t payload[128]; // TODO: see what is really the limit
 } __attribute__((packed)) lpsSwarmPacket_t;

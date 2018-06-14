@@ -42,17 +42,18 @@ static void transmit(dwDevice_t *dev) {
   debug.totalRangingPerSec++;
 #endif
 
-  // Create txPacket
-  lpsSwarmPacket_t* txPacket;
-  unsigned int txPacketLength = allocAndFillTxPacket(&packet, ctx.dct, ctx.localId);
+  lpsSwarmPacket_t* txPacket = &packet;
+
+  setTxData(txPacket, ctx.dct, ctx.localId);
+  unsigned int packetSize = calculatePacketSize(txPacket);
 
   // Set tx time inside txPacket
   dwTime_t tx = findTransmitTimeAsSoonAsPossible(dev);
   uint64_t localTx = tx.full;
-  txPacket->tx = localTx;
+  txPacket->header.tx = localTx;
 
   // Set data
-  dwSetData(dev, (uint8_t*)txPacket, txPacketLength);
+  dwSetData(dev, (uint8_t*)txPacket, packetSize);
   vPortFree(txPacket);
 
   dwNewTransmit(dev);
@@ -74,30 +75,17 @@ static void init() {
   ctx.localId = generateId();
   ctx.localTx = 0;
 
-  /*
-  int16_t averageTxFrequency = calculateAverageTxFrequency(0);
-  randomizedTimerEngine.init(&ctx.randomizedTimer, transmitCallback);
-  randomizedTimerEngine.setFrequency(&ctx.randomizedTimer, averageTxFrequency);
-  randomizedTimerEngine.start(&ctx.randomizedTimer);
-   */
+  ctx.averageTxDelay = calculateAverageTxDelay(0);
+  ctx.timeOfNextTx = calculateRandomDelayToNextTx(ctx.averageTxDelay);
 }
 
 static void handleRxPacket(dwDevice_t *dev) {
   // Makes sure the id is unique among the neighbours around, and regenerate it only if the local ranging information is less than the information coming on the packet
-  if (packet.sourceId == ctx.localId && dict_count(ctx.dct) <= packet.payloadLength) {
+  if (packet.header.sourceId == ctx.localId && dict_count(ctx.dct) <= packet.header.payloadLength) {
     ctx.localId = generateIdNotInPacket(&packet);
   }
 
-  uint8_t prevNumberOfNeighbours = dict_count(ctx.dct);
-
   processRxPacket(dev, ctx.localId, &packet, ctx.dct, ctx.localTx);
-
-  uint8_t numberOfNeighbours = dict_count(ctx.dct);
-  if (numberOfNeighbours != prevNumberOfNeighbours) {
-    int16_t averageTxFrequency = calculateAverageTxFrequency(numberOfNeighbours);
-    randomizedTimerEngine.setFrequency(&ctx.randomizedTimer, averageTxFrequency);
-    randomizedTimerEngine.start(&ctx.randomizedTimer);
-  }
 }
 
 /**

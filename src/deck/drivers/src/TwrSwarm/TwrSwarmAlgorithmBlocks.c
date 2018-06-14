@@ -74,13 +74,14 @@ locoId_t generateIdNotInPacket(lpsSwarmPacket_t* packet) {
   locoId_t cantidateId = generateId();
 
   // Makes sure the cantidateId is not the source of the packet
-  while(packet->sourceId == cantidateId) {
+  while(packet->header.sourceId == cantidateId) {
     cantidateId = generateId();
   }
 
   // Makes sure the cantidateId is not any of the destination ids on the packet
-  for(int i = 0; i < packet->payloadLength; i++) {
-    if (packet->payload[i].id == cantidateId) {
+  for(int i = 0; i < packet->header.payloadLength; i++) {
+    payload_t* payload = (payload_t*)&(packet->payload);
+    if (payload[i].id == cantidateId) {
       return generateIdNotInPacket(packet);
     }
   }
@@ -136,13 +137,17 @@ neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id) {
   }
 }
 
-void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
-  // Packet creation
-  uint8_t payloadLength = dict_count(dct);
-  if (payloadLength >)
+unsigned int calculatePacketSize(lpsSwarmPacket_t* packet) {
+  return sizeof(lpsSwarmPacketHeader_t) + packet->header.payloadLength * sizeof(payload_t);
+}
 
-  txPacket->sourceId = sourceId;
-  txPacket->payloadLength = payloadLength;
+void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
+  uint8_t payloadLength = dict_count(dct);
+
+  txPacket->header.sourceId = sourceId;
+  txPacket->header.payloadLength = payloadLength;
+
+  payload_t* payload = (payload_t*)&(txPacket->payload);
 
   if (payloadLength > 0) {
     // Get data from the dict and into the txPacket array
@@ -156,7 +161,7 @@ void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
         .time = data->localRx
       };
 
-      txPacket->payload[i] = pair;
+      payload[i] = pair;
       dict_itor_next(itor);
     }
 
@@ -167,23 +172,25 @@ void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
 void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t lastKnownLocalTxTimestamp) {
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
-  neighbourData_t* neighbourData = getDataForNeighbour(dct, rxPacket->sourceId);
+
+  neighbourData_t* neighbourData = getDataForNeighbour(dct, rxPacket->header.sourceId);
+  payload_t* payload = (payload_t*)&(rxPacket->payload);
 
   // Timestamp remote values
-  const uint64_t remoteTx = rxPacket->tx;
+  const uint64_t remoteTx = rxPacket->header.tx;
 
   // Timestamp local values
   const uint64_t localRx = rxTimestamp.full;
 
-  for(int i = 0; i < rxPacket->payloadLength; i++) {
-    if (rxPacket->payload[i].id == localId) { // To be executed only once
+  for(int i = 0; i < rxPacket->header.payloadLength; i++) {
+    if (payload[i].id == localId) { // To be executed only once
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       debug.succededRangingPerSec++;
 #endif
 
       // Timestamp remote values
-      const uint64_t remoteRx = rxPacket->payload[i].time;
+      const uint64_t remoteRx = payload[i].time;
       const uint64_t prevRemoteTx = neighbourData->remoteTx;
 
       // Timestamp local values
