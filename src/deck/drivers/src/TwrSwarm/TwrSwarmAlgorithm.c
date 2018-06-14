@@ -7,12 +7,14 @@
 #include "debug.h"
 #endif
 
+static lpsSwarmPacket_t packet;
+
 /**
  A type that encapsulates all the required global values of the algorithm
  */
 static struct {
-  dict *dct;
-
+  dwDevice_t* dev; // Needed when sending tx packets at random times
+  dict* dct;
   locoId_t localId;
 
   // Add packet sequence number
@@ -20,11 +22,48 @@ static struct {
   // Values to calculate t_round
   uint64_t localTx; // To be set after transmission
 
-  randomizedTimer_t randomizedTimer;
+  uint32_t timeOfNextTx;
+  uint32_t averageTxDelay;
 } ctx;
 
-static void transmitCallback() {
-  DEBUG_PRINT("transmit\n");
+/* Helpers */
+/**********************************/
+
+static void setupRx(dwDevice_t *dev) {
+  dwNewReceive(dev);
+  dwSetDefaults(dev);
+  dwStartReceive(dev);
+}
+
+/**********************************/
+
+static void transmit(dwDevice_t *dev) {
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+  debug.totalRangingPerSec++;
+#endif
+
+  // Create txPacket
+  lpsSwarmPacket_t* txPacket;
+  unsigned int txPacketLength = allocAndFillTxPacket(&packet, ctx.dct, ctx.localId);
+
+  // Set tx time inside txPacket
+  dwTime_t tx = findTransmitTimeAsSoonAsPossible(dev);
+  uint64_t localTx = tx.full;
+  txPacket->tx = localTx;
+
+  // Set data
+  dwSetData(dev, (uint8_t*)txPacket, txPacketLength);
+  vPortFree(txPacket);
+
+  dwNewTransmit(dev);
+  dwSetDefaults(dev);
+  dwSetTxRxTime(dev, tx);
+
+  dwWaitForResponse(dev, true);
+  dwStartTransmit(dev);
+
+  // Set historic
+  ctx.localTx = localTx;
 }
 
 static void init() {
@@ -35,88 +74,64 @@ static void init() {
   ctx.localId = generateId();
   ctx.localTx = 0;
 
+  /*
   int16_t averageTxFrequency = calculateAverageTxFrequency(0);
   randomizedTimerEngine.init(&ctx.randomizedTimer, transmitCallback);
   randomizedTimerEngine.setFrequency(&ctx.randomizedTimer, averageTxFrequency);
   randomizedTimerEngine.start(&ctx.randomizedTimer);
+   */
 }
 
-static void initiateRanging(dwDevice_t *dev) {
-#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-  debug.totalRangingPerSec++;
-#endif
+static void handleRxPacket(dwDevice_t *dev) {
+  // Makes sure the id is unique among the neighbours around, and regenerate it only if the local ranging information is less than the information coming on the packet
+  if (packet.sourceId == ctx.localId && dict_count(ctx.dct) <= packet.payloadLength) {
+    ctx.localId = generateIdNotInPacket(&packet);
+  }
 
-  dwNewTransmit(dev);
-  dwSetDefaults(dev);
-  dwWaitForResponse(dev, true);
-  dwStartTransmit(dev);
+  uint8_t prevNumberOfNeighbours = dict_count(ctx.dct);
+
+  processRxPacket(dev, ctx.localId, &packet, ctx.dct, ctx.localTx);
+
+  uint8_t numberOfNeighbours = dict_count(ctx.dct);
+  if (numberOfNeighbours != prevNumberOfNeighbours) {
+    int16_t averageTxFrequency = calculateAverageTxFrequency(numberOfNeighbours);
+    randomizedTimerEngine.setFrequency(&ctx.randomizedTimer, averageTxFrequency);
+    randomizedTimerEngine.start(&ctx.randomizedTimer);
+  }
 }
 
-static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmPacket_t* rxPacket, unsigned int dataLength) {
-  if (dataLength > 0) {
-    // Makes sure the id is unique among the neighbours around, and regenerate it only if the local ranging information is less than the information coming on the packet
-    if (rxPacket->sourceId == ctx.localId && dict_count(ctx.dct) <= rxPacket->payloadLength) {
-      ctx.localId = generateIdNotInPacket(rxPacket);
-    }
+/**
+ Called for each DW radio event
+ */
+static uint32_t onEvent(dwDevice_t *dev, uwbEvent_t event) {
+  bool shouldHandleRxPacket = false;
 
-    uint8_t prevNumberOfNeighbours = dict_count(ctx.dct);
-
-    processRxPacket(dev, ctx.localId, rxPacket, ctx.dct, ctx.localTx);
-
-    uint8_t numberOfNeighbours = dict_count(ctx.dct);
-    if (numberOfNeighbours != prevNumberOfNeighbours) {
-      int16_t averageTxFrequency = calculateAverageTxFrequency(numberOfNeighbours);
-      randomizedTimerEngine.setFrequency(&ctx.randomizedTimer, averageTxFrequency);
-      randomizedTimerEngine.start(&ctx.randomizedTimer);
+  if (event == eventPacketReceived) {
+    unsigned int dataLength = dwGetDataLength(dev);
+    if (dataLength > 0) {
+      dwGetData(dev, (uint8_t*)&packet, dataLength);
+      shouldHandleRxPacket = true;
     }
   }
 
-  if (true) {
-#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-    debug.totalRangingPerSec++;
-#endif
+  setupRx(dev);
 
-    // Is its turn to send data
-
-    // Create txPacket
-    lpsSwarmPacket_t* txPacket;
-    unsigned int txPacketLength = allocAndFillTxPacket(&txPacket, ctx.dct, ctx.localId);
-
-    // Set tx time inside txPacket
-    dwTime_t tx = findTransmitTimeAsSoonAsPossible(dev);
-    uint64_t localTx = tx.full;
-    txPacket->tx = localTx;
-
-    // Set data
-    dwSetData(dev, (uint8_t*)txPacket, txPacketLength);
-    vPortFree(txPacket);
-
-    dwNewTransmit(dev);
-    dwSetDefaults(dev);
-    dwSetTxRxTime(dev, tx);
-
-    dwWaitForResponse(dev, true);
-    dwStartTransmit(dev);
-
-    // Set historic
-    ctx.localTx = localTx;
-  } else {
-    // Has to wait for the next neighbour
-    dwNewReceive(dev);
-    dwSetDefaults(dev);
-    dwStartReceive(dev);
+  if (shouldHandleRxPacket) {
+    handleRxPacket(dev);
   }
 
-  return MAX_TIMEOUT;
-}
+  uint32_t now = xTaskGetTickCount();
+  int32_t timeoutForNextTx = ctx.timeOfNextTx - now;
+  if (timeoutForNextTx <= 0) {
+    ctx.timeOfNextTx = now + calculateRandomDelayToNextTx(ctx.averageTxDelay);
+    timeoutForNextTx = ctx.timeOfNextTx - now;
 
-static void txcallback(dwDevice_t *dev) {
-  // DEBUG_PRINT("txcallback\n");
+    transmit(dev);
+  }
+  return timeoutForNextTx;
 }
 
 twrSwarmAlgorithm_t twrSwarmAlgorithm = {
   .init = init,
-  .initiateRanging = initiateRanging,
-  .rxcallback = rxcallback,
-  .txcallback = txcallback
+  .onEvent = onEvent
 };

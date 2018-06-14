@@ -31,26 +31,33 @@
 /**********************************/
 
 
-/* Calculation of average tx frequency */
+/* Calculation of when to transmit */
 /**********************************/
 
 #define AVERAGE_TX_FREQ 400
-#define MAX_TX_FREQ 50 // Maximum tx frequency: we do not need more
+#define MAX_TX_FREQ 50 // Maximum tx frequency (we do not need more for a proper ranging)
+static uint32_t ticksPerSecond = M2T(1000);
 
 /**********************************/
 
+/**
+ Calculates a random delay for next transmission
+ */
+uint32_t calculateRandomDelayToNextTx(uint32_t averageTxDelay) {
+  return averageTxDelay / 2 + rand() % averageTxDelay;
+}
 
 /**
- Calculates the average tx frequency based on the number of drones around
+ Calculates the average tx delay based on the number of drones around
  */
-uint16_t calculateAverageTxFrequency(uint8_t numberOfNeighbours) {
+uint32_t calculateAverageTxDelay(uint8_t numberOfNeighbours) {
   uint16_t freq = AVERAGE_TX_FREQ / (numberOfNeighbours + 1);
 
   if (freq > MAX_TX_FREQ) {
     freq = MAX_TX_FREQ;
   }
 
-  return freq;
+  return ticksPerSecond / freq;
 }
 
 /**
@@ -129,15 +136,11 @@ neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id) {
   }
 }
 
-unsigned int allocAndFillTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct, locoId_t sourceId) {
+void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
   // Packet creation
   uint8_t payloadLength = dict_count(dct);
-  unsigned int txPacketLength = sizeof(lpsSwarmPacket_t) + payloadLength * sizeof(payload_t);
+  if (payloadLength >)
 
-  *txPacketPointer = pvPortMalloc(txPacketLength);
-
-  lpsSwarmPacket_t* txPacket = *txPacketPointer; // Declared for convenience and cleaner code
-  txPacket->tx = 0; // This will be filled after allocating and filling the txPacket, and inmediatelly before starting the transmission. For now, we zero it.
   txPacket->sourceId = sourceId;
   txPacket->payloadLength = payloadLength;
 
@@ -159,8 +162,6 @@ unsigned int allocAndFillTxPacket(lpsSwarmPacket_t** txPacketPointer, dict* dct,
 
     dict_itor_free(itor);
   }
-
-  return txPacketLength;
 }
 
 void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t lastKnownLocalTxTimestamp) {

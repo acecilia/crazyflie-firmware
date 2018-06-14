@@ -48,41 +48,6 @@
 static lpsAlgoOptions_t* options;
 static bool rangingOk;
 
-/*static void sendData(dwDevice_t *dev, void *data, bool waitForResponse) {
-  dwNewTransmit(dev);
-  dwSetDefaults(dev);
-  dwSetData(dev, (uint8_t*)&data, MAC802154_HEADER_LENGTH+2);
-  dwWaitForResponse(dev, waitForResponse);
-  dwStartTransmit(dev);
-}
-
-static void waitForResponse(dwDevice_t *dev) {
-  dwNewReceive(dev);
-  dwSetDefaults(dev);
-  dwStartReceive(dev);
-}*/
-
-static void txcallback(dwDevice_t *dev) {
-  twrSwarmAlgorithm.txcallback(dev);
-}
-
-static uint32_t rxcallback(dwDevice_t *dev) {
-  unsigned int dataLength = dwGetDataLength(dev);
-
-  if (dataLength > 0) {
-    lpsSwarmPacket_t* rxPacket = pvPortMalloc(dataLength);
-    dwGetData(dev, (uint8_t*)rxPacket, dataLength);
-    twrSwarmAlgorithm.rxcallback(dev, options, rxPacket, dataLength);
-    vPortFree(rxPacket);
-  }
-
-  return MAX_TIMEOUT;
-}
-
-static void initiateRanging(dwDevice_t *dev) {
-  twrSwarmAlgorithm.initiateRanging(dev);
-}
-
 static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 {
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
@@ -108,27 +73,7 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
   }
 #endif
 
-  switch(event) {
-    case eventPacketReceived:
-      return rxcallback(dev);
-      break;
-    case eventPacketSent:
-      txcallback(dev);
-      return MAX_TIMEOUT;
-      break;
-    case eventTimeout:  // Comes back to timeout after each ranging attempt
-      initiateRanging(dev); // Added
-      return MAX_TIMEOUT;
-      break;
-    case eventReceiveTimeout:
-    case eventReceiveFailed:
-      return 0;
-      break;
-    default:
-      configASSERT(false);
-  }
-
-  return MAX_TIMEOUT;
+  return twrSwarmAlgorithm.onEvent(dev, event);
 }
 
 static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)

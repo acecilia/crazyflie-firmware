@@ -21,10 +21,11 @@ typedef struct {
  */
 typedef struct {
   locoId_t sourceId;
-  uint64_t tx;
+  uint64_t tx; // TODO: see if we can reduce the size of data type
 
   uint8_t payloadLength; // Allows a logic limit of 256 pairs (which limits the maximum number of drones participating in the swarm to 256)
-  payload_t payload[];
+
+  uint8_t payload[128]; // TODO: see what is really the limit
 } __attribute__((packed)) lpsSwarmPacket_t;
 
 /**
@@ -42,9 +43,7 @@ typedef struct {
 
 typedef struct {
   void (*init)(void);
-  void (*initiateRanging)(dwDevice_t *dev);
-  uint32_t (*rxcallback)(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmPacket_t* rxPacket, unsigned int dataLength);
-  void (*txcallback)(dwDevice_t *dev);
+  uint32_t (*onEvent)(dwDevice_t *dev, uwbEvent_t event);
 } twrSwarmAlgorithm_t;
 
 extern twrSwarmAlgorithm_t twrSwarmAlgorithm;
