@@ -35,7 +35,9 @@ static void init() {
   ctx.localId = generateId();
   ctx.localTx = 0;
 
-  randomizedTimerEngine.init(&ctx.randomizedTimer, calculateAverageTxFrequency(0), transmitCallback);
+  int16_t averageTxFrequency = calculateAverageTxFrequency(0);
+  randomizedTimerEngine.init(&ctx.randomizedTimer, transmitCallback);
+  randomizedTimerEngine.setFrequency(&ctx.randomizedTimer, averageTxFrequency);
   randomizedTimerEngine.start(&ctx.randomizedTimer);
 }
 
@@ -63,8 +65,8 @@ static uint32_t rxcallback(dwDevice_t *dev, lpsAlgoOptions_t* options, lpsSwarmP
 
     uint8_t numberOfNeighbours = dict_count(ctx.dct);
     if (numberOfNeighbours != prevNumberOfNeighbours) {
-      uint16_t newAverageFrequency = calculateAverageTxFrequency(numberOfNeighbours);
-      randomizedTimerEngine.setFrequency(&ctx.randomizedTimer, newAverageFrequency);
+      int16_t averageTxFrequency = calculateAverageTxFrequency(numberOfNeighbours);
+      randomizedTimerEngine.setFrequency(&ctx.randomizedTimer, averageTxFrequency);
       randomizedTimerEngine.start(&ctx.randomizedTimer);
     }
   }
