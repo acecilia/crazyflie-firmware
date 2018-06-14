@@ -39,7 +39,6 @@ void testRandomizePeriod() {
 
 void testInit() {
   // Fixture
-  const uint16_t frequency = 500;
   const xTimerHandle timer = (void*) 1234;
   void (*callback)(void) = (void (*)(void)) 5678;
 
@@ -47,13 +46,11 @@ void testInit() {
   xTimerCreate_IgnoreAndReturn(timer);
 
   // Test
-  init(&randomizedTimer, frequency, callback);
+  init(&randomizedTimer, callback);
 
   // Assert
-  const double expectedPeriod = 2; // TicksPerSecond are 1000
   const xTimerHandle expectedTimer = timer;
   void (*expectedCallback)(void) = callback;
-  TEST_ASSERT_EQUAL_UINT16(expectedPeriod, randomizedTimer.averagePeriod);
   TEST_ASSERT_EQUAL(expectedTimer, randomizedTimer.timer);
   TEST_ASSERT_EQUAL(expectedCallback, randomizedTimer.callback);
 }
