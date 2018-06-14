@@ -3,6 +3,7 @@
 
 #include "TwrSwarmAlgorithm.h"
 
+uint16_t calculateAverageTxFrequency(uint8_t numberOfNeighbours);
 locoId_t generateId(void);
 locoId_t generateIdNotInPacket(lpsSwarmPacket_t* packet);
 void adjustTxRxTime(dwTime_t *time);

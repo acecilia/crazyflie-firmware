@@ -6,6 +6,9 @@
 #include "TwrSwarmDebug.h"
 #endif
 
+/* Clock correction */
+/**********************************/
+
 // Time length of the preamble
 #define PREAMBLE_LENGTH_S ( 128 * 1017.63e-9 )
 #define PREAMBLE_LENGTH (uint64_t)( PREAMBLE_LENGTH_S * 499.2e6 * 128 )
@@ -17,7 +20,38 @@
 #define TDMA_EXTRA_LENGTH_S ( 300e-6 )
 #define TDMA_EXTRA_LENGTH (uint64_t)( TDMA_EXTRA_LENGTH_S * 499.2e6 * 128 )
 
-#define DW1000_MAXIMUM_COUNT (uint64_t)( 0xffffffffff ) //The maximum timestamp the DW1000 can return (40 bits)
+/**********************************/
+
+
+/* Timestamp truncation */
+/**********************************/
+
+#define DW1000_MAXIMUM_COUNT_MASK (uint64_t)( 0xFFFFFFFFFF ) //The maximum timestamp the DW1000 can return (40 bits)
+
+/**********************************/
+
+
+/* Calculation of average tx frequency */
+/**********************************/
+
+#define AVERAGE_TX_FREQ 400
+#define MAX_TX_FREQ 50 // Maximum tx frequency: we do not need more
+
+/**********************************/
+
+
+/**
+ Calculates the average tx frequency based on the number of drones around
+ */
+uint16_t calculateAverageTxFrequency(uint8_t numberOfNeighbours) {
+  uint16_t freq = AVERAGE_TX_FREQ / (numberOfNeighbours + 1);
+
+  if (freq > ANCHOR_MAX_TX_FREQ) {
+    freq = MAX_TX_FREQ;
+  }
+
+  return frec;
+}
 
 /**
  Generates a random id, to be used on the packets
@@ -68,11 +102,8 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
 
   adjustTxRxTime(&transmitTime);
 
-  // If the planned transmit time wraps around, recalculate it. This is probably not necessary for the dw1000 chip (since the bits higher than the 40th will be discarded), but the tx timestamp is also included inside the packets, and is expected to contain the proper tx value (not higher than 2^40 - 1)
-  if (transmitTime.full >= DW1000_MAXIMUM_COUNT) {
-    transmitTime.full = transmitTime.full - DW1000_MAXIMUM_COUNT;
-    adjustTxRxTime(&transmitTime);
-  }
+  // Wrap around if needed
+  transmitTime.full &= DW1000_MAXIMUM_COUNT_MASK;
 
   return transmitTime;
 }
