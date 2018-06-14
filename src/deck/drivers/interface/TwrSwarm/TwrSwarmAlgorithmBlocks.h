@@ -7,7 +7,7 @@ uint32_t calculateRandomDelayToNextTx(uint32_t averageTxDelay);
 uint32_t calculateAverageTxDelay(uint8_t numberOfNeighbours);
 
 locoId_t generateId(void);
-locoId_t generateIdNotInPacket(lpsSwarmPacket_t* packet);
+locoId_t generateIdNotIn(lpsSwarmPacket_t* packet, dict* dct);
 void adjustTxRxTime(dwTime_t *time);
 dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev);
 neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id);

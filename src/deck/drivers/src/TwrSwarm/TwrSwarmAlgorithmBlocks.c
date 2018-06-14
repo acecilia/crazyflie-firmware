@@ -70,20 +70,26 @@ locoId_t generateId() {
 /**
  Generates a random id which is not found in the provided packet
  */
-locoId_t generateIdNotInPacket(lpsSwarmPacket_t* packet) {
+locoId_t generateIdNotIn(lpsSwarmPacket_t* packet, dict* dct) {
   locoId_t cantidateId = generateId();
 
   // Makes sure the cantidateId is not the source of the packet
-  while(packet->header.sourceId == cantidateId) {
-    cantidateId = generateId();
+  if(packet->header.sourceId == cantidateId) {
+    return generateIdNotIn(packet, dct);
   }
 
   // Makes sure the cantidateId is not any of the destination ids on the packet
   for(int i = 0; i < packet->header.payloadLength; i++) {
     payload_t* payload = (payload_t*)&(packet->payload);
     if (payload[i].id == cantidateId) {
-      return generateIdNotInPacket(packet);
+      return generateIdNotIn(packet, dct);
     }
+  }
+
+  // Makes sure the cantidateId is not the id of any of the known drones
+  void** search_result = dict_search(dct, &cantidateId);
+  if (search_result) {
+    return generateIdNotIn(packet, dct);
   }
 
   return cantidateId;
