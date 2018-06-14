@@ -8,7 +8,7 @@
 #include "randomizedTimer.h"
 
 typedef struct {
-  void (*init)(randomizedTimer_t* randomizedTimer, uint16_t frequency, void (*callback)(void));
+  void (*init)(randomizedTimer_t* randomizedTimer, void (*callback)(void));
   void (*start)(randomizedTimer_t* randomizedTimer);
   void (*stop)(randomizedTimer_t* randomizedTimer);
   void (*setFrequency)(randomizedTimer_t* randomizedTimer, uint16_t frequency);
