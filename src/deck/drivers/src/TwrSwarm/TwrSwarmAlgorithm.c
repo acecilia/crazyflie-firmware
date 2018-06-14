@@ -1,8 +1,10 @@
 #include "TwrSwarmAlgorithm.h"
 #include "TwrSwarmAlgorithmBlocks.h"
+#include "randomizedTimerEngine.h"
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
+#include "debug.h"
 #endif
 
 /**
@@ -17,16 +19,24 @@ static struct {
 
   // Values to calculate t_round
   uint64_t localTx; // To be set after transmission
+
+  randomizedTimer_t randomizedTimer;
 } ctx;
 
+static void transmitCallback() {
+  DEBUG_PRINT("transmit\n");
+}
 
 static void init() {
   configure_dict_malloc();
 
-  // Initialize the dictionary storing the rangings
-  ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10);
+  // Initialize the context
+  ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the rangings
   ctx.localId = generateId();
   ctx.localTx = 0;
+
+  randomizedTimerEngine.init(&ctx.randomizedTimer, 1, transmitCallback);
+  randomizedTimerEngine.start(&ctx.randomizedTimer);
 }
 
 static void initiateRanging(dwDevice_t *dev) {
