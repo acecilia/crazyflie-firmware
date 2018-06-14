@@ -25,10 +25,10 @@ void setFrequency(randomizedTimer_t* randomizedTimer, uint16_t frequency) {
 }
 
 void vCallbackFunction(TimerHandle_t xTimer) {
+  randomizedTimer->callback();
+
   randomizedTimer_t* randomizedTimer = pvTimerGetTimerID(xTimer);
   start(randomizedTimer);
-
-  randomizedTimer->callback();
 }
 
 TickType_t randomizePeriod(TickType_t averagePeriod) {
