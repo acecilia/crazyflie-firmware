@@ -46,11 +46,11 @@
 uint16_t calculateAverageTxFrequency(uint8_t numberOfNeighbours) {
   uint16_t freq = AVERAGE_TX_FREQ / (numberOfNeighbours + 1);
 
-  if (freq > ANCHOR_MAX_TX_FREQ) {
+  if (freq > MAX_TX_FREQ) {
     freq = MAX_TX_FREQ;
   }
 
-  return frec;
+  return freq;
 }
 
 /**
