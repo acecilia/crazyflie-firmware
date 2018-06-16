@@ -46,9 +46,10 @@ static void testFillDictionary(dict* dct, locoId_t id, neighbourData_t data) {
  A function to find a pair inside the payload of a packet. Needed because when passing the dictionary data to an array, there order is not specified
  */
 static payload_t* testFindPairInPayload(lpsSwarmPacket_t* packet, locoId_t id) {
-  for (unsigned int i = 0; i < packet->payloadLength; i++) {
-    if (packet->payload[i].id == id) {
-      return &packet->payload[i];
+  for (unsigned int i = 0; i < packet->header.payloadLength; i++) {
+    payload_t* payload = (payload_t*)&packet->payload;
+    if (payload[i].id == id) {
+      return &payload[i];
     }
   }
   return NULL;
@@ -185,22 +186,23 @@ void testGetDataForNeighbourWithFilledDictionaryAndDifferentKeys() {
   TEST_ASSERT_NOT_EQUAL(&initialData, result);
 }
 
-void testAllocAndFillTxPacketWithoutPayload() {
+void testSetTxDataWithoutPayload() {
   dict* dct = testCreateTestDictionary();
   locoId_t sourceId = 6;
   unsigned int expectedTxPacketLength = sizeof(lpsSwarmPacket_t);
 
   // Create package
-  lpsSwarmPacket_t* txPacket = NULL;
-  unsigned int txPacketLength = allocAndFillTxPacket(&txPacket, dct, sourceId);
+  lpsSwarmPacket_t txPacket;
+  setTxData(&txPacket, dct, sourceId);
+  unsigned int txPacketLength = calculatePacketSize(&txPacket);
 
   TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
-  TEST_ASSERT_EQUAL_UINT8(sourceId, txPacket->sourceId);
-  TEST_ASSERT_EQUAL_UINT64(0, txPacket->tx);
-  TEST_ASSERT_EQUAL_UINT8(0, txPacket->payloadLength);
+  TEST_ASSERT_EQUAL_UINT8(sourceId, txPacket.header.sourceId);
+  TEST_ASSERT_EQUAL_UINT64(0, txPacket.header.tx);
+  TEST_ASSERT_EQUAL_UINT8(0, txPacket.header.payloadLength);
 }
 
-void testAllocAndFillTxPacketWithPayload() {
+void testSetTxDataWithPayload() {
   dict* dct = testCreateTestDictionary();
   locoId_t sourceId = 6;
 
@@ -213,16 +215,17 @@ void testAllocAndFillTxPacketWithPayload() {
   unsigned int expectedTxPacketLength = sizeof(lpsSwarmPacket_t) + elementsCount * sizeof(payload_t);
 
   // Create package
-  lpsSwarmPacket_t* txPacket = NULL;
-  unsigned int txPacketLength = allocAndFillTxPacket(&txPacket, dct, sourceId);
+  lpsSwarmPacket_t txPacket;
+  setTxData(&txPacket, dct, sourceId);
+  unsigned int txPacketLength = calculatePacketSize(&txPacket);
 
   // Verify result
   TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
-  TEST_ASSERT_EQUAL_UINT8(sourceId, txPacket->sourceId);
-  TEST_ASSERT_EQUAL_UINT64(0, txPacket->tx);
-  TEST_ASSERT_EQUAL_UINT8(elementsCount, txPacket->payloadLength);
+  TEST_ASSERT_EQUAL_UINT8(sourceId, txPacket.header.sourceId);
+  TEST_ASSERT_EQUAL_UINT64(0, txPacket.header.tx);
+  TEST_ASSERT_EQUAL_UINT8(elementsCount, txPacket.header.payloadLength);
   for (uint8_t i = 0; i < elementsCount; i++) {
-    payload_t* pair = testFindPairInPayload(txPacket, i);
+    payload_t* pair = testFindPairInPayload(&txPacket, i);
     TEST_ASSERT_EQUAL_UINT8(i, pair->id);
     TEST_ASSERT_EQUAL_UINT64(i, pair->time);
   }
@@ -273,14 +276,15 @@ void testProcessRxPacketWithPayload() {
 
   // Create and fill rxPacket
   lpsSwarmPacket_t* rxPacket = pvPortMalloc(sizeof(lpsSwarmPacket_t) + 1 * sizeof(payload_t));
-  rxPacket->sourceId = remoteId;
-  rxPacket->tx = remoteTx;
-  rxPacket->payloadLength = 1;
+  rxPacket->header.sourceId = remoteId;
+  rxPacket->header.tx = remoteTx;
+  rxPacket->header.payloadLength = 1;
   payload_t pair = {
     .id = localId,
     .time = remoteRx
   };
-  rxPacket->payload[0] = pair;
+  payload_t* payload = (payload_t*)&rxPacket->payload;
+  payload[0] = pair;
 
   // Test
   processRxPacket(&dummyDev, localId, rxPacket, dct, localTx);
@@ -317,9 +321,9 @@ void testProcessRxPacketWithoutPayload() {
 
   // Create and fill rxPacket
   lpsSwarmPacket_t* rxPacket = pvPortMalloc(sizeof(lpsSwarmPacket_t));
-  rxPacket->sourceId = remoteId;
-  rxPacket->tx = remoteTx;
-  rxPacket->payloadLength = 0;
+  rxPacket->header.sourceId = remoteId;
+  rxPacket->header.tx = remoteTx;
+  rxPacket->header.payloadLength = 0;
 
   // Test
   uint64_t dummyLocalTx = 9999; // Not needed, as localTx is only used when there is payload
