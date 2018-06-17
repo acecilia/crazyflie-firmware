@@ -4,7 +4,6 @@
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
-#include "debug.h"
 #endif
 
 static lpsSwarmPacket_t packet;
@@ -92,7 +91,6 @@ static void transmit(dwDevice_t *dev) {
 
   // Set data
   dwSetData(dev, (uint8_t*)txPacket, packetSize);
-  vPortFree(txPacket);
 
   dwNewTransmit(dev);
   dwSetDefaults(dev);
