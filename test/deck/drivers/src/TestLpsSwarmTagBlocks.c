@@ -136,7 +136,7 @@ void testFindTransmitTimeAsSoonAsPossibleWithHighInitialValueWithoutWrappingArro
 void testFindTransmitTimeAsSoonAsPossibleHighInitialValueAndWrappingAround() {
   uint64_t expectedValueWithZeroInitialValue = 27556352;
   dwTime_t initialValue = { .full = DW1000_MAXIMUM_COUNT - expectedValueWithZeroInitialValue / 2 };
-  uint64_t expectedValue = 13778944; // Approximatelly: expectedValueWithZeroInitialValue + initialValue.full (counting the wrapping) = expectedValueWithZeroInitialValue / 2 = 13778176
+  uint64_t expectedValue = 13778432; // Approximatelly: expectedValueWithZeroInitialValue + initialValue.full (counting the wrapping) = expectedValueWithZeroInitialValue / 2 = 13778176
 
   dwDevice_t dummyDev;
   dwTime_t dummyValue;
@@ -187,23 +187,28 @@ void testGetDataForNeighbourWithFilledDictionaryAndDifferentKeys() {
 }
 
 void testSetTxDataWithoutPayload() {
+  // Fixture
   dict* dct = testCreateTestDictionary();
-  locoId_t sourceId = 6;
-  unsigned int expectedTxPacketLength = sizeof(lpsSwarmPacket_t);
-
-  // Create package
   lpsSwarmPacket_t txPacket;
+  locoId_t sourceId = 6;
+
+  // Test
   setTxData(&txPacket, dct, sourceId);
   unsigned int txPacketLength = calculatePacketSize(&txPacket);
 
+  // Assert
+  unsigned int expectedTxPacketLength = sizeof(lpsSwarmPacketHeader_t);
+  locoId_t expectedSourceId = sourceId;
   TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
-  TEST_ASSERT_EQUAL_UINT8(sourceId, txPacket.header.sourceId);
+  TEST_ASSERT_EQUAL_UINT8(expectedSourceId, txPacket.header.sourceId);
   TEST_ASSERT_EQUAL_UINT64(0, txPacket.header.tx);
   TEST_ASSERT_EQUAL_UINT8(0, txPacket.header.payloadLength);
 }
 
 void testSetTxDataWithPayload() {
+  // Fixture
   dict* dct = testCreateTestDictionary();
+  lpsSwarmPacket_t txPacket;
   locoId_t sourceId = 6;
 
   // Fill dictionary
@@ -212,19 +217,20 @@ void testSetTxDataWithPayload() {
     neighbourData_t data = { .localRx = i, .remoteTx = i + 1, .tof = i + 2 };
     testFillDictionary(dct, i, data);
   }
-  unsigned int expectedTxPacketLength = sizeof(lpsSwarmPacket_t) + elementsCount * sizeof(payload_t);
 
-  // Create package
-  lpsSwarmPacket_t txPacket;
+  // Test
   setTxData(&txPacket, dct, sourceId);
   unsigned int txPacketLength = calculatePacketSize(&txPacket);
 
-  // Verify result
+  // Assert
+  uint8_t expectedPayloadLength = elementsCount;
+  unsigned int expectedTxPacketLength = sizeof(lpsSwarmPacketHeader_t) + expectedPayloadLength * sizeof(payload_t);
+  locoId_t expectedSourceId = sourceId;
   TEST_ASSERT_EQUAL_UINT(expectedTxPacketLength, txPacketLength);
-  TEST_ASSERT_EQUAL_UINT8(sourceId, txPacket.header.sourceId);
+  TEST_ASSERT_EQUAL_UINT8(expectedSourceId, txPacket.header.sourceId);
   TEST_ASSERT_EQUAL_UINT64(0, txPacket.header.tx);
-  TEST_ASSERT_EQUAL_UINT8(elementsCount, txPacket.header.payloadLength);
-  for (uint8_t i = 0; i < elementsCount; i++) {
+  TEST_ASSERT_EQUAL_UINT8(expectedPayloadLength, txPacket.header.payloadLength);
+  for (uint8_t i = 0; i < expectedPayloadLength; i++) {
     payload_t* pair = testFindPairInPayload(&txPacket, i);
     TEST_ASSERT_EQUAL_UINT8(i, pair->id);
     TEST_ASSERT_EQUAL_UINT64(i, pair->time);

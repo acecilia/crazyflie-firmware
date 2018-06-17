@@ -150,6 +150,7 @@ unsigned int calculatePacketSize(lpsSwarmPacket_t* packet) {
 void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
   uint8_t payloadLength = dict_count(dct);
 
+  txPacket->header.tx = 0; // This will be filled after setting the data of the txPacket, and inmediatelly before starting the transmission. For now, we zero it
   txPacket->header.sourceId = sourceId;
   txPacket->header.payloadLength = payloadLength;
 
