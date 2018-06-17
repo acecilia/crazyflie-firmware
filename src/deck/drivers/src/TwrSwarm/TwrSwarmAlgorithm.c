@@ -110,6 +110,9 @@ static void handleRxPacket(dwDevice_t *dev) {
   // Makes sure the id is unique among the neighbours around, and regenerate it only if the local ranging information is less than the information coming on the packet
   if (packet.header.sourceId == ctx.localId) {
     ctx.localId = generateIdNotIn(&packet, ctx.dct);
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+    debug.idFailure++;
+#endif
   }
 
   processRxPacket(dev, ctx.localId, &packet, ctx.dct, ctx.localTx);
@@ -119,23 +122,23 @@ static void handleRxPacket(dwDevice_t *dev) {
  Called for each DW radio event
  */
 static uint32_t onEvent(dwDevice_t *dev, uwbEvent_t event) {
-  dwIdle(dev); // Put the chip in idle (to save battery during processing) when not receiving or transmitting
+  unsigned int dataLength = 0;
 
-  if (event == eventTimeout) {
+  // If data was received, get it before changing the status of the DW1000 chip
+  if (event == eventPacketReceived) {
+    dataLength = dwGetDataLength(dev);
+    dwGetData(dev, (uint8_t*)&packet, dataLength);
+  }
+
+  // Configure the DW1000 for Rx before processing the event: we want the chip on Rx mode as much time as possible, to avoid losing packets
+  setupRx(dev);
+
+  // Process the event
+  if (event == eventPacketReceived && dataLength > 0) {
+    handleRxPacket(dev);
+  } else if (event == eventTimeout) {
     ctx.timeOfNextTx = now() + calculateRandomDelayToNextTx(ctx.averageTxDelay);
     transmit(dev);
-  } else if (event == eventPacketReceived) {
-    unsigned int dataLength = dwGetDataLength(dev);
-    dwGetData(dev, (uint8_t*)&packet, dataLength);
-
-    // SetupRx after getting the packet data, and before processing it
-    setupRx(dev);
-
-    if (dataLength > 0) {
-      handleRxPacket(dev);
-    }
-  } else {
-    setupRx(dev);
   }
 
   int32_t timeoutForNextTx = ctx.timeOfNextTx - now();

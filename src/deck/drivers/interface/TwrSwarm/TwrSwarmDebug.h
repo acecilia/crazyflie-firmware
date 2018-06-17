@@ -26,6 +26,7 @@ typedef struct {
   uint32_t auxiliaryValue;
   
   uint32_t measurementFailure;
+  uint32_t idFailure;
 
   void (*blink)(led_t led);
   void (*init)(void);
