@@ -231,8 +231,8 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
         debug.localRound = localRound;
       }
 
-      debug.clockCorrectionCandidate = clockCorrectionCandidate * 10000;
-      debug.clockCorrection = clockCorrection * 10000;
+      debug.clockCorrectionCandidate = clockCorrectionCandidate * 1000000;
+      debug.clockCorrection = clockCorrection * 1000000;
 
       debug.tof = neighbourData->tof;
 
