@@ -301,7 +301,7 @@ void testProcessRxPacketWithPayload() {
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
   TEST_ASSERT_EQUAL_UINT32(tof - 1, currentNeighbourData->tof); // The -1 is required, because in the conversion between double and integer the system cuts the number down
   TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue
-  TEST_ASSERT_EQUAL_UINT(1, currentNeighbourData->clockCorrectionStorage.clockCorrectionBucket);
+  TEST_ASSERT_EQUAL_UINT(0, currentNeighbourData->clockCorrectionStorage.clockCorrectionBucket);
 }
 
 void testProcessRxPacketWithoutPayload() {
