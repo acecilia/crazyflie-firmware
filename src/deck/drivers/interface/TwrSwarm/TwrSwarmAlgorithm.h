@@ -13,7 +13,8 @@ typedef uint8_t locoId_t;
  */
 typedef struct {
   locoId_t id;
-  uint64_t time;
+  uint64_t rx;
+  uint64_t tx;
 } __attribute__((packed)) payload_t;
 
 /**

@@ -18,9 +18,6 @@ static struct {
 
   // Add packet sequence number
 
-  // Values to calculate t_round
-  uint64_t localTx; // To be set after transmission
-
   uint32_t timeOfNextTx;
   uint32_t averageTxDelay;
 
@@ -60,7 +57,6 @@ static void init() {
   // Initialize the context
   ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the rangings
   ctx.localId = generateId();
-  ctx.localTx = 0;
 
   // Related with random transmission
   ctx.averageTxDelay = calculateAverageTxDelay(0);
@@ -98,9 +94,6 @@ static void transmit(dwDevice_t *dev) {
 
   dwWaitForResponse(dev, true);
   dwStartTransmit(dev);
-
-  // Set historic
-  ctx.localTx = localTx;
 }
 
 /**
@@ -115,7 +108,7 @@ static void handleRxPacket(dwDevice_t *dev) {
 #endif
   }
 
-  processRxPacket(dev, ctx.localId, &packet, ctx.dct, ctx.localTx);
+  processRxPacket(dev, ctx.localId, &packet, ctx.dct);
 }
 
 /**

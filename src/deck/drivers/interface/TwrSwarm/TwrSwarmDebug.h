@@ -13,8 +13,8 @@ typedef struct {
   uint32_t remoteReply;
   uint32_t localReply;
   uint32_t localRound;
-  float clockCorrection;
-  float clockCorrectionCandidate;
+  uint32_t clockCorrection;
+  uint32_t clockCorrectionCandidate;
 
   uint32_t tof;
 
