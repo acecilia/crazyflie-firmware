@@ -98,8 +98,8 @@ LOG_ADD(LOG_FLOAT, remoteTx, &debug.localTx)
 LOG_ADD(LOG_UINT32, remoteReply, &debug.remoteReply)
 LOG_ADD(LOG_UINT32, localReply, &debug.localReply)
 LOG_ADD(LOG_UINT32, localRound, &debug.localRound)
-LOG_ADD(LOG_FLOAT, ckCorr, &debug.clockCorrection)
-LOG_ADD(LOG_FLOAT, ckCorrCandidate, &debug.clockCorrectionCandidate)
+LOG_ADD(LOG_UINT32, ckCorr, &debug.clockCorrection)
+LOG_ADD(LOG_UINT32, ckCorrCandidate, &debug.clockCorrectionCandidate)
 
 LOG_ADD(LOG_UINT32, tof, &debug.tof)
 

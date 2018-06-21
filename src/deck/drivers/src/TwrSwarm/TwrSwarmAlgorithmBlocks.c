@@ -163,19 +163,6 @@ void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
     for (unsigned int i = 0; i < payloadLength; i++) {
       locoId_t key = *(locoId_t*)dict_itor_key(itor);
       neighbourData_t* data = (neighbourData_t*)*dict_itor_datum(itor);
-
-      /* Do the first part of the ranging calculation:
-       1) The calculation in the destination drone is [(localRx - localTx) - clkc(remoteTx - remoteRx)] / 2 =
-          (localRx - localTx - clkc * remoteTx + clkc * remoteRx) / 2
-       2) We have some of that data:
-          * localTx in the destination drones is remoteTx in the sending drone
-          * remoteTx in the destination drones is tx in the sending drone (which will be set after)
-          * remoteRx in the destination drones is localRx in the sending drone
-          * clkc in the destination drones is 1 / clkc in the sending drone
-       3) We can calculate some results in the sending drone:
-          * In the destination drone: -localTx + clkc * remoteRx
-          * In the sending drone: -remoteTx + (1 / clkc) * localRx
-       */
       payload_t pair = {
         .id = key,
         .tx = data->remoteTx,
@@ -210,7 +197,6 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
 #endif
 
       // Timestamp remote values
-      // const int64_t minusLocalTxPlusRemoteRx = payload[i].time; // -localTx + clkc * remoteRx
       const uint64_t remoteRx = payload[i].rx;
       const uint64_t prevRemoteTx = neighbourData->remoteTx;
 
@@ -229,12 +215,6 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
 
       neighbourData->tof = (localRound - localReply) / 2;
 
-      // Verify the obtained results are correct
-      // tof = [(localRx - localTx) - clkc(remoteTx - remoteRx)] / 2 =
-      // (localRx - localTx - clkc * remoteTx + clkc * remoteRx) / 2 =
-      // (localRx - clkc * remoteTx + localTxPlusRemoteRx) / 2
-      // neighbourData->tof = (uint32_t)((int64_t)localRx - (int64_t)remoteTx + minusLocalTxPlusRemoteRx) / 2;
-
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       /*if (localReply > localRound) {
         debug.measurementFailure++;
@@ -249,8 +229,14 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
         debug.localRound = localRound;
       }*/
 
-      debug.clockCorrectionCandidate = clockCorrectionCandidate * 1000000;
-      debug.clockCorrection = clockCorrection * 1000000;
+      debug.auxiliaryValue = (localRound - remoteReply) / 2;
+
+      debug.localRound = localRound;
+      debug.localReply = localReply;
+      debug.remoteReply = remoteReply;
+
+      debug.clockCorrectionCandidate = (uint32_t)(clockCorrectionCandidate * 1000000000);
+      debug.clockCorrection = (uint32_t)(clockCorrection * 1000000000);
 
       debug.tof = neighbourData->tof;
 
