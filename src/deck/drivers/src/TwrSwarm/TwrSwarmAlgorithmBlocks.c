@@ -163,11 +163,24 @@ void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
     for (unsigned int i = 0; i < payloadLength; i++) {
       locoId_t key = *(locoId_t*)dict_itor_key(itor);
       neighbourData_t* data = (neighbourData_t*)*dict_itor_datum(itor);
+
+      /* Do the first part of the ranging calculation:
+       1) The calculation in the destination drone is [(localRx - localTx) - clkc(remoteTx - remoteRx)] / 2 =
+          (localRx - localTx - clkc * remoteTx + clkc * remoteRx) / 2
+       2) We have some of that data:
+          * localTx in the destination drones is remoteTx in the sending drone
+          * remoteTx in the destination drones is tx in the sending drone (which will be set after)
+          * remoteRx in the destination drones is localRx in the sending drone
+          * clkc in the destination drones is 1 / clkc in the sending drone
+       3) We can calculate some results in the sending drone:
+          * In the destination drone: -localTx + clkc * remoteRx
+          * In the sending drone: -remoteTx + (1 / clkc) * localRx
+       */
       payload_t pair = {
         .id = key,
-        .time = data->localRx
+        .tx = data->remoteTx,
+        .rx = data->localRx,
       };
-
       payload[i] = pair;
       dict_itor_next(itor);
     }
@@ -176,7 +189,7 @@ void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
   }
 }
 
-void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPacket, dict* dct, uint64_t lastKnownLocalTxTimestamp) {
+void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPacket, dict* dct) {
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
 
@@ -197,28 +210,33 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
 #endif
 
       // Timestamp remote values
-      const uint64_t remoteRx = payload[i].time;
+      // const int64_t minusLocalTxPlusRemoteRx = payload[i].time; // -localTx + clkc * remoteRx
+      const uint64_t remoteRx = payload[i].rx;
       const uint64_t prevRemoteTx = neighbourData->remoteTx;
 
       // Timestamp local values
-      const uint64_t localTx = lastKnownLocalTxTimestamp;
+      const uint64_t localTx = payload[i].tx;
       const uint64_t prevLocalRx = neighbourData->localRx;
 
       // Calculations
-      const uint32_t remoteReply = (uint32_t)(remoteTx - remoteRx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
-
       const double clockCorrectionCandidate = clockCorrectionEngine.calculateClockCorrection(localRx, prevLocalRx, remoteTx, prevRemoteTx, 0xFFFFFFFFFF /* 40 bits */);
       clockCorrectionEngine.updateClockCorrection(&neighbourData->clockCorrectionStorage, clockCorrectionCandidate);
       const double clockCorrection = clockCorrectionEngine.getClockCorrection(&neighbourData->clockCorrectionStorage);
 
+      const uint32_t remoteReply = (uint32_t)(remoteTx - remoteRx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
       const uint32_t localReply = (uint32_t)(remoteReply * clockCorrection);
       const uint32_t localRound = (uint32_t)(localRx - localTx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
 
-      // Verify the obtained results are correct
       neighbourData->tof = (localRound - localReply) / 2;
 
+      // Verify the obtained results are correct
+      // tof = [(localRx - localTx) - clkc(remoteTx - remoteRx)] / 2 =
+      // (localRx - localTx - clkc * remoteTx + clkc * remoteRx) / 2 =
+      // (localRx - clkc * remoteTx + localTxPlusRemoteRx) / 2
+      // neighbourData->tof = (uint32_t)((int64_t)localRx - (int64_t)remoteTx + minusLocalTxPlusRemoteRx) / 2;
+
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-      if (localReply > localRound) {
+      /*if (localReply > localRound) {
         debug.measurementFailure++;
 
         debug.localRx = localRx;
@@ -229,7 +247,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPack
         debug.remoteReply = remoteReply;
         debug.localReply = localReply;
         debug.localRound = localRound;
-      }
+      }*/
 
       debug.clockCorrectionCandidate = clockCorrectionCandidate * 1000000;
       debug.clockCorrection = clockCorrection * 1000000;
