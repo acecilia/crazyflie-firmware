@@ -36,7 +36,7 @@
 /**********************************/
 
 #define AVERAGE_TX_FREQ 400
-#define MAX_TX_FREQ 50 // Maximum tx frequency (we do not need more for a proper ranging)
+#define MAX_TX_FREQ 100 // Maximum tx frequency (we do not need more for a proper ranging)
 static uint32_t ticksPerSecond = M2T(1000);
 
 /**********************************/
@@ -184,8 +184,8 @@ unsigned int calculatePacketSize(lpsSwarmPacket_t* packet) {
   return sizeof(lpsSwarmPacketHeader_t) + packet->header.payloadLength * sizeof(payload_t);
 }
 
-void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
-  uint8_t payloadLength = dict_count(dct);
+void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, dict* neighbourDct, dict* tofDict) {
+  uint8_t payloadLength = dict_count(neighbourDct);
 
   txPacket->header.tx = 0; // This will be filled after setting the data of the txPacket, and inmediatelly before starting the transmission. For now, we zero it
   txPacket->header.sourceId = sourceId;
@@ -195,15 +195,17 @@ void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
 
   if (payloadLength > 0) {
     // Get data from the dict and into the txPacket array
-    dict_itor *itor = dict_itor_new(dct);
+    dict_itor *itor = dict_itor_new(neighbourDct);
     dict_itor_first(itor);
     for (unsigned int i = 0; i < payloadLength; i++) {
-      locoId_t key = *(locoId_t*)dict_itor_key(itor);
-      neighbourData_t* data = (neighbourData_t*)*dict_itor_datum(itor);
+      locoId_t destinationId = *(locoId_t*)dict_itor_key(itor);
+      neighbourData_t* neighbourData = (neighbourData_t*)*dict_itor_datum(itor);
+      tofData_t* tofData = getTofDataBetween(tofDict, sourceId, destinationId);
       payload_t pair = {
-        .id = key,
-        .tx = data->remoteTx,
-        .rx = data->localRx,
+        .id = destinationId,
+        .tx = neighbourData->remoteTx,
+        .rx = neighbourData->localRx,
+        .tof = tofData->tof
       };
       payload[i] = pair;
       dict_itor_next(itor);
@@ -220,7 +222,6 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   locoId_t remoteId = rxPacket->header.sourceId;
 
   neighbourData_t* neighbourData = getDataForNeighbour(neighboursDct, remoteId);
-  payload_t* payload = (payload_t*)&(rxPacket->payload);
 
   // Timestamp remote values
   const uint64_t prevRemoteTx = neighbourData->remoteTx;
@@ -233,9 +234,12 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   // Calculate clock correction
   const double clockCorrectionCandidate = clockCorrectionEngine.calculateClockCorrection(localRx, prevLocalRx, remoteTx, prevRemoteTx, 0xFFFFFFFFFF /* 40 bits */);
   clockCorrectionEngine.updateClockCorrection(&neighbourData->clockCorrectionStorage, clockCorrectionCandidate);
+  const double clockCorrection = clockCorrectionEngine.getClockCorrection(&neighbourData->clockCorrectionStorage);
 
+  payload_t* payload = (payload_t*)&(rxPacket->payload);
   for(int i = 0; i < rxPacket->header.payloadLength; i++) {
-    if (payload[i].id == localId) { // To be executed only once
+    if (payload[i].id == localId) {
+      // TODO: Andres. See what can we use the transmitted tof for
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       debug.succededRangingPerSec++;
@@ -248,13 +252,12 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       const uint64_t localTx = payload[i].tx;
 
       // Calculations
-      const double clockCorrection = clockCorrectionEngine.getClockCorrection(&neighbourData->clockCorrectionStorage);
       const uint32_t remoteReply = (uint32_t)(remoteTx - remoteRx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
       const uint32_t localReply = (uint32_t)(remoteReply * clockCorrection);
       const uint32_t localRound = (uint32_t)(localRx - localTx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
 
       tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId);
-      tofData->tof = (localRound - localReply) / 2;
+      tofData->tof = (uint16_t)((localRound - localReply) / 2);
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       /*if (localReply > localRound) {
@@ -279,11 +282,13 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       debug.clockCorrectionCandidate = (uint32_t)(clockCorrectionCandidate * 1000000000);
       debug.clockCorrection = (uint32_t)(clockCorrection * 1000000000);
 
-      debug.tof = neighbourData->tof;
+      debug.tof = tofData->tof;
 
-      debug.dctCount = dict_count(dct);
+      debug.dctCount = dict_count(neighboursDct);
 #endif
-      break;
+    } else {
+      tofData_t* tofData = getTofDataBetween(tofDct, remoteId, payload[i].id);
+      tofData->tof = (uint16_t)(payload[i].tof * clockCorrection);
     }
   }
 

@@ -45,7 +45,6 @@
 
 #include "TwrSwarmAlgorithm.h"
 
-static lpsAlgoOptions_t* options;
 static bool rangingOk;
 
 static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
@@ -79,8 +78,6 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 {
   twrSwarmAlgorithm.init();
-
-  options = algoOptions;
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
   debug.init();

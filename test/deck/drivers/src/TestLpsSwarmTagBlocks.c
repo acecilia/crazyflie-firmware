@@ -60,7 +60,7 @@ static void testFillTofDictionary(dict* dct, const locoId_t id1, const locoId_t 
 /**
  A function to find a pair inside the payload of a packet. Needed because when passing the dictionary data to an array, there order is not specified
  */
-static payload_t* testFindPairInPayload(lpsSwarmPacket_t* packet, locoId_t id) {
+static payload_t* testFindDataInPayload(lpsSwarmPacket_t* packet, locoId_t id) {
   for (unsigned int i = 0; i < packet->header.payloadLength; i++) {
     payload_t* payload = (payload_t*)&packet->payload;
     if (payload[i].id == id) {
@@ -227,12 +227,13 @@ void testGetDataForNeighbourWithFilledDictionaryAndDifferentKeys() {
 
 void testSetTxDataWithoutPayload() {
   // Fixture
-  dict* dct = testCreateNeighboursDictionary();
+  dict* neighbourDct = testCreateNeighboursDictionary();
+  dict* tofDct = testCreateTofDictionary();
   lpsSwarmPacket_t txPacket;
   locoId_t sourceId = 6;
 
   // Test
-  setTxData(&txPacket, dct, sourceId);
+  setTxData(&txPacket, sourceId, neighbourDct, tofDct);
   unsigned int txPacketLength = calculatePacketSize(&txPacket);
 
   // Assert
@@ -246,7 +247,8 @@ void testSetTxDataWithoutPayload() {
 
 void testSetTxDataWithPayload() {
   // Fixture
-  dict* dct = testCreateNeighboursDictionary();
+  dict* neighbourDct = testCreateNeighboursDictionary();
+  dict* tofDct = testCreateTofDictionary();
   lpsSwarmPacket_t txPacket;
   locoId_t sourceId = 6;
 
@@ -254,11 +256,14 @@ void testSetTxDataWithPayload() {
   uint8_t elementsCount = 5;
   for (uint8_t i = 0; i < elementsCount; i++) {
     neighbourData_t neighbourData = { .localRx = i, .remoteTx = i + 1 };
-    testFillNeighboursDictionary(dct, i, neighbourData);
+    testFillNeighboursDictionary(neighbourDct, i, neighbourData);
+
+    tofData_t tofData = { .tof = i + 2 };
+    testFillTofDictionary(tofDct, sourceId, i, tofData);
   }
 
   // Test
-  setTxData(&txPacket, dct, sourceId);
+  setTxData(&txPacket, sourceId, neighbourDct, tofDct);
   unsigned int txPacketLength = calculatePacketSize(&txPacket);
 
   // Assert
@@ -270,10 +275,11 @@ void testSetTxDataWithPayload() {
   TEST_ASSERT_EQUAL_UINT64(0, txPacket.header.tx);
   TEST_ASSERT_EQUAL_UINT8(expectedPayloadLength, txPacket.header.payloadLength);
   for (uint8_t i = 0; i < expectedPayloadLength; i++) {
-    payload_t* pair = testFindPairInPayload(&txPacket, i);
-    TEST_ASSERT_EQUAL_UINT8(i, pair->id);
-    TEST_ASSERT_EQUAL_UINT64(i, pair->rx);
-    TEST_ASSERT_EQUAL_UINT64(i + 1, pair->tx);
+    payload_t* data = testFindDataInPayload(&txPacket, i);
+    TEST_ASSERT_EQUAL_UINT8(i, data->id);
+    TEST_ASSERT_EQUAL_UINT64(i, data->rx);
+    TEST_ASSERT_EQUAL_UINT64(i + 1, data->tx);
+    TEST_ASSERT_EQUAL_UINT16(i + 2, data->tof);
   }
 }
 
@@ -346,7 +352,7 @@ void testProcessRxPacketWithPayload() {
 
   TEST_ASSERT_EQUAL_UINT64(remoteTx, currentNeighbourData->remoteTx);
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
-  TEST_ASSERT_EQUAL_UINT32(tof, currentTofData->tof); // It may be that -1 is required, because in the conversion between double and integer the system cuts the number down
+  TEST_ASSERT_EQUAL_UINT16(tof, currentTofData->tof); // It may be that -1 is required, because in the conversion between double and integer the system cuts the number down
   TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue
   TEST_ASSERT_EQUAL_UINT(0, currentNeighbourData->clockCorrectionStorage.clockCorrectionBucket);
 }

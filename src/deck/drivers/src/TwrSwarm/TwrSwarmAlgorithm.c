@@ -13,7 +13,7 @@ static lpsSwarmPacket_t packet;
  */
 static struct {
   dwDevice_t* dev; // Needed when sending tx packets at random times
-  dict* dct;
+  dict* neighboursDct;
   dict* tofDct;
   locoId_t localId;
 
@@ -45,7 +45,7 @@ uint32_t now() {
  */
 static void timerCallback(xTimerHandle timer) {
   // Adjust average tx delay based on the number of known drones around
-  uint8_t numberOfNeighbours = dict_count(ctx.dct);
+  uint8_t numberOfNeighbours = dict_count(ctx.neighboursDct);
   ctx.averageTxDelay = calculateAverageTxDelay(numberOfNeighbours);
 }
 
@@ -56,8 +56,8 @@ static void init() {
   configure_dict_malloc();
 
   // Initialize the context
-  ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the neighbours data
-  ctx.dct = hashtable2_dict_new(dict_uint16_cmp, dict_uint16_hash, 10); // Dictionary storing the tof data
+  ctx.neighboursDct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the neighbours data
+  ctx.tofDct = hashtable2_dict_new(dict_uint16_cmp, dict_uint16_hash, 10); // Dictionary storing the tof data
   ctx.localId = generateId();
 
   // Related with random transmission
@@ -79,7 +79,7 @@ static void transmit(dwDevice_t *dev) {
 
   lpsSwarmPacket_t* txPacket = &packet;
 
-  setTxData(txPacket, ctx.dct, ctx.localId);
+  setTxData(txPacket, ctx.localId, ctx.neighboursDct, ctx.tofDct);
   unsigned int packetSize = calculatePacketSize(txPacket);
 
   // Set tx time inside txPacket
@@ -104,13 +104,13 @@ static void transmit(dwDevice_t *dev) {
 static void handleRxPacket(dwDevice_t *dev) {
   // Makes sure the id is unique among the neighbours around, and regenerate it only if the local ranging information is less than the information coming on the packet
   if (packet.header.sourceId == ctx.localId) {
-    ctx.localId = generateIdNotIn(&packet, ctx.dct);
+    ctx.localId = generateIdNotIn(&packet, ctx.neighboursDct);
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
     debug.idFailure++;
 #endif
   }
 
-  processRxPacket(dev, ctx.localId, &packet, ctx.dct);
+  processRxPacket(dev, ctx.localId, &packet, ctx.neighboursDct, ctx.tofDct);
 }
 
 /**
@@ -136,12 +136,12 @@ static uint32_t onEvent(dwDevice_t *dev, uwbEvent_t event) {
     transmit(dev);
   }
 
-  int32_t timeoutForNextTx = ctx.timeOfNextTx - now();
-  if (timeoutForNextTx <= 0) {
+  int32_t timeoutForNextTx = (int32_t)(ctx.timeOfNextTx - now());
+  if (timeoutForNextTx < 0) {
     // Force a timeout, that will result in a new call to onEvent
     timeoutForNextTx = 0;
   }
-  return timeoutForNextTx;
+  return (uint32_t)timeoutForNextTx;
 }
 
 twrSwarmAlgorithm_t twrSwarmAlgorithm = {

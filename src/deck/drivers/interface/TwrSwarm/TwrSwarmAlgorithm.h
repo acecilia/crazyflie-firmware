@@ -16,6 +16,7 @@ typedef struct {
   locoId_t id;
   uint64_t rx;
   uint64_t tx;
+  uint16_t tof;
 } __attribute__((packed)) payload_t;
 
 /**
@@ -55,7 +56,7 @@ typedef struct {
  A type that encapsulates the information to keep track of the tof
  */
 typedef struct {
-  uint32_t tof; // To be set after reception
+  uint16_t tof; // To be set after reception
 } __attribute__((packed)) tofData_t;
 
 typedef struct {
