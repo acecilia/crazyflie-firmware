@@ -28,17 +28,32 @@
 #define DW1000_MAXIMUM_COUNT (uint64_t)( 1099511627775 ) //The maximum timestamp the DW1000 can return (40 bits: 2^40 - 1)
 
 /**
- Create a dictionary. Used for avoiding code duplication
+ Create a neighbours dictionary. Used for avoiding code duplication
  */
-static dict* testCreateTestDictionary() {
+static dict* testCreateNeighboursDictionary() {
   return hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10);
 }
 
 /**
- Add an entry to the dictionary
+ Create a tof dictionary. Used for avoiding code duplication
  */
-static void testFillDictionary(dict* dct, locoId_t id, neighbourData_t data) {
+static dict* testCreateTofDictionary() {
+  return hashtable2_dict_new(dict_uint16_cmp, dict_uint16_hash, 10);
+}
+
+/**
+ Add an entry to the neighbours dictionary
+ */
+static void testFillNeighboursDictionary(dict* dct, const locoId_t id, const neighbourData_t data) {
   neighbourData_t* result = getDataForNeighbour(dct, id);
+  *result = data;
+}
+
+/**
+ Add an entry to the tof dictionary
+ */
+static void testFillTofDictionary(dict* dct, const locoId_t id1, const locoId_t id2, const tofData_t data) {
+  tofData_t* result = getTofDataBetween(dct, id1, id2);
   *result = data;
 }
 
@@ -158,44 +173,61 @@ void testFindTransmitTimeAsSoonAsPossibleHighInitialValueAndWrappingAround() {
 }
 
 void testGetDataForNeighbourWithEmptyDictionary() {
-  dict* dct = testCreateTestDictionary();
+  dict* dct = testCreateNeighboursDictionary();
 
   neighbourData_t* result = getDataForNeighbour(dct, 1);
 
   TEST_ASSERT_EQUAL_UINT64(0, result->localRx);
   TEST_ASSERT_EQUAL_UINT64(0, result->remoteTx);
-  TEST_ASSERT_EQUAL_UINT64(0, result->tof);
+  TEST_ASSERT_EQUAL_DOUBLE(1, result->clockCorrectionStorage.clockCorrection);
+  TEST_ASSERT_EQUAL_UINT(0, result->clockCorrectionStorage.clockCorrectionBucket);
 }
 
 void testGetDataForNeighbourWithFilledDictionary() {
-  dict* dct = testCreateTestDictionary();
-  neighbourData_t initialData = { .localRx = 1, .remoteTx = 2, .tof = 3 };
+  dict* dct = testCreateNeighboursDictionary();
+  neighbourData_t initialData = {
+    .localRx = 1,
+    .remoteTx = 2,
+    .clockCorrectionStorage = {
+      .clockCorrection = 3.47,
+      .clockCorrectionBucket = 2
+    }
+  };
 
-  testFillDictionary(dct, 1, initialData);
+  testFillNeighboursDictionary(dct, 1, initialData);
   neighbourData_t* result = getDataForNeighbour(dct, 1);
 
   TEST_ASSERT_EQUAL_UINT64(initialData.localRx, result->localRx);
   TEST_ASSERT_EQUAL_UINT64(initialData.remoteTx, result->remoteTx);
-  TEST_ASSERT_EQUAL_UINT32(initialData.tof, result->tof);
+  TEST_ASSERT_EQUAL_DOUBLE(initialData.clockCorrectionStorage.clockCorrection, result->clockCorrectionStorage.clockCorrection);
+  TEST_ASSERT_EQUAL_UINT(initialData.clockCorrectionStorage.clockCorrectionBucket, result->clockCorrectionStorage.clockCorrectionBucket);
   TEST_ASSERT_NOT_EQUAL(&initialData, result);
 }
 
 void testGetDataForNeighbourWithFilledDictionaryAndDifferentKeys() {
-  dict* dct = testCreateTestDictionary();
-  neighbourData_t initialData = { .localRx = 1, .remoteTx = 2, .tof = 3 };
+  dict* dct = testCreateNeighboursDictionary();
+  neighbourData_t initialData = {
+    .localRx = 1,
+    .remoteTx = 2,
+    .clockCorrectionStorage = {
+      .clockCorrection = 3.47,
+      .clockCorrectionBucket = 2
+    }
+  };
 
-  testFillDictionary(dct, 1, initialData);
+  testFillNeighboursDictionary(dct, 1, initialData);
   neighbourData_t* result = getDataForNeighbour(dct, 2);
 
   TEST_ASSERT_NOT_EQUAL(initialData.localRx, result->localRx);
   TEST_ASSERT_NOT_EQUAL(initialData.remoteTx, result->remoteTx);
-  TEST_ASSERT_NOT_EQUAL(initialData.tof, result->tof);
+  TEST_ASSERT_NOT_EQUAL(initialData.clockCorrectionStorage.clockCorrection, result->clockCorrectionStorage.clockCorrection);
+  TEST_ASSERT_NOT_EQUAL(initialData.clockCorrectionStorage.clockCorrectionBucket, result->clockCorrectionStorage.clockCorrectionBucket);
   TEST_ASSERT_NOT_EQUAL(&initialData, result);
 }
 
 void testSetTxDataWithoutPayload() {
   // Fixture
-  dict* dct = testCreateTestDictionary();
+  dict* dct = testCreateNeighboursDictionary();
   lpsSwarmPacket_t txPacket;
   locoId_t sourceId = 6;
 
@@ -214,15 +246,15 @@ void testSetTxDataWithoutPayload() {
 
 void testSetTxDataWithPayload() {
   // Fixture
-  dict* dct = testCreateTestDictionary();
+  dict* dct = testCreateNeighboursDictionary();
   lpsSwarmPacket_t txPacket;
   locoId_t sourceId = 6;
 
   // Fill dictionary
   uint8_t elementsCount = 5;
   for (uint8_t i = 0; i < elementsCount; i++) {
-    neighbourData_t data = { .localRx = i, .remoteTx = i + 1, .tof = i + 2 };
-    testFillDictionary(dct, i, data);
+    neighbourData_t neighbourData = { .localRx = i, .remoteTx = i + 1 };
+    testFillNeighboursDictionary(dct, i, neighbourData);
   }
 
   // Test
@@ -270,15 +302,18 @@ void testProcessRxPacketWithPayload() {
   locoId_t remoteId = 5;
   locoId_t localId = 6;
 
-  // Create the dictionary
-  dict* dct = testCreateTestDictionary();
+  // Create the neighbours dictionary
+  dict* neighboursDct = testCreateNeighboursDictionary();
 
-  // Set previous data
-  neighbourData_t* prevNeighbourData = getDataForNeighbour(dct, remoteId);
+  // Set previous neighbour data
+  neighbourData_t* prevNeighbourData = getDataForNeighbour(neighboursDct, remoteId);
   prevNeighbourData->remoteTx = prevRemoteTx;
   prevNeighbourData->localRx = prevLocalRx;
   prevNeighbourData->clockCorrectionStorage.clockCorrection = 5; // A wrong value on pourpose, so the proper clock correction is set and then we can assert it
   prevNeighbourData->clockCorrectionStorage.clockCorrectionBucket = 0;
+
+  // Create the tof dictionary
+  dict* tofDct = testCreateTofDictionary();
 
   // Setup the mock in charge of generating localRx
   dwTime_t localRxTimeStamp = { .full = localRx };
@@ -303,13 +338,15 @@ void testProcessRxPacketWithPayload() {
   payload[0] = pair;
 
   // Test
-  processRxPacket(&dummyDev, localId, &rxPacket, dct);
+  processRxPacket(&dummyDev, localId, &rxPacket, neighboursDct, tofDct);
 
   // Verify result
-  neighbourData_t* currentNeighbourData = getDataForNeighbour(dct, remoteId);
+  neighbourData_t* currentNeighbourData = getDataForNeighbour(neighboursDct, remoteId);
+  tofData_t* currentTofData = getTofDataBetween(tofDct, localId, remoteId);
+
   TEST_ASSERT_EQUAL_UINT64(remoteTx, currentNeighbourData->remoteTx);
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
-  TEST_ASSERT_EQUAL_UINT32(tof, currentNeighbourData->tof); // It may be that -1 is required, because in the conversion between double and integer the system cuts the number down
+  TEST_ASSERT_EQUAL_UINT32(tof, currentTofData->tof); // It may be that -1 is required, because in the conversion between double and integer the system cuts the number down
   TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue
   TEST_ASSERT_EQUAL_UINT(0, currentNeighbourData->clockCorrectionStorage.clockCorrectionBucket);
 }
@@ -331,14 +368,17 @@ void testProcessRxPacketWithoutPayload() {
   locoId_t localId = 6;
 
   // Create the dictionary
-  dict* dct = testCreateTestDictionary();
+  dict* neighbourDct = testCreateNeighboursDictionary();
 
   // Set previous data
-  neighbourData_t* prevNeighbourData = getDataForNeighbour(dct, remoteId);
+  neighbourData_t* prevNeighbourData = getDataForNeighbour(neighbourDct, remoteId);
   prevNeighbourData->remoteTx = prevRemoteTx;
   prevNeighbourData->localRx = prevLocalRx;
   prevNeighbourData->clockCorrectionStorage.clockCorrection = 5; // A wrong value on pourpose, so the proper clock correction is set and then we can assert it
   prevNeighbourData->clockCorrectionStorage.clockCorrectionBucket = 0;
+
+  // Create the tof dictionary
+  dict* tofDct = testCreateTofDictionary();
 
   // Setup the mock in charge of generating localRx
   dwTime_t localRxTimeStamp = { .full = localRx };
@@ -356,10 +396,10 @@ void testProcessRxPacketWithoutPayload() {
   rxPacket.header.payloadLength = 0;
 
   // Test
-  processRxPacket(&dummyDev, localId, &rxPacket, dct);
+  processRxPacket(&dummyDev, localId, &rxPacket, neighbourDct, tofDct);
 
   // Verify result
-  neighbourData_t* currentNeighbourData = getDataForNeighbour(dct, remoteId);
+  neighbourData_t* currentNeighbourData = getDataForNeighbour(neighbourDct, remoteId);
   TEST_ASSERT_EQUAL_UINT64(remoteTx, currentNeighbourData->remoteTx);
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
   TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue

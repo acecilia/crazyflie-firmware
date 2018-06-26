@@ -14,6 +14,7 @@ static lpsSwarmPacket_t packet;
 static struct {
   dwDevice_t* dev; // Needed when sending tx packets at random times
   dict* dct;
+  dict* tofDct;
   locoId_t localId;
 
   // Add packet sequence number
@@ -55,7 +56,8 @@ static void init() {
   configure_dict_malloc();
 
   // Initialize the context
-  ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the rangings
+  ctx.dct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the neighbours data
+  ctx.dct = hashtable2_dict_new(dict_uint16_cmp, dict_uint16_hash, 10); // Dictionary storing the tof data
   ctx.localId = generateId();
 
   // Related with random transmission

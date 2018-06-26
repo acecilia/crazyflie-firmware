@@ -45,6 +45,22 @@ unsigned dict_uint8_hash(const void* k) {
 }
 
 /**
+ Comparator between two uint8_t values
+ */
+int dict_uint16_cmp(const void* k1, const void* k2) {
+  const uint16_t a = *(const uint16_t*)k1;
+  const uint16_t b = *(const uint16_t*)k2;
+  return (a > b) - (a < b);
+}
+
+/**
+ Hash function of a uint8_t value
+ */
+unsigned dict_uint16_hash(const void* k) {
+  return *(uint16_t*)k;
+}
+
+/**
  Hash function of an unsigned int value
  */
 unsigned dict_uint_hash(const void* k) {

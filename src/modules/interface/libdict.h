@@ -23,6 +23,9 @@ void key_val_static_free(void *key, void *value);
 int dict_uint8_cmp(const void *__s1, const void *__s2);
 unsigned int dict_uint8_hash(const void* k);
 
+int dict_uint16_cmp(const void *__s1, const void *__s2);
+unsigned int dict_uint16_hash(const void* k);
+
 int dict_uint64_cmp(const void *__s1, const void *__s2);
 unsigned int dict_uint64_hash(const void* k);
 

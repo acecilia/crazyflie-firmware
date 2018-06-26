@@ -1,6 +1,7 @@
 #include "TwrSwarmAlgorithmBlocks.h"
 #include "clockCorrectionEngine.h"
 #include <stdlib.h>
+#include "limits.h"
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
@@ -41,10 +42,28 @@ static uint32_t ticksPerSecond = M2T(1000);
 /**********************************/
 
 /**
+ Calculates a unique id from two loco ids
+ */
+locoIdx2_t getidFromIds(const locoId_t id1, const locoId_t id2) {
+  locoId_t leftPart;
+  locoId_t rightPart;
+
+  if (id1 >= id2) {
+    leftPart = id1;
+    rightPart = id2;
+  } else {
+    leftPart = id2;
+    rightPart = id1;
+  }
+
+  return (locoIdx2_t)((leftPart << (sizeof(locoId_t) * CHAR_BIT)) | rightPart);
+}
+
+/**
  Calculates a random delay for next transmission
  */
 uint32_t calculateRandomDelayToNextTx(uint32_t averageTxDelay) {
-  return averageTxDelay / 2 + rand() % averageTxDelay;
+  return averageTxDelay / 2 + (uint32_t)rand() % averageTxDelay;
 }
 
 /**
@@ -122,12 +141,31 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   return transmitTime;
 }
 
-neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id) {
+tofData_t* getTofDataBetween(dict* dct, const locoId_t id1, const locoId_t id2) {
+  locoIdx2_t id = getidFromIds(id1, id2);
+
+  void** search_result = dict_search(dct, &id);
+  if (search_result) {
+    return (tofData_t *)*search_result;
+  } else {
+    locoIdx2_t* key = pvPortMalloc(sizeof(locoIdx2_t));
+    *key = id;
+
+    tofData_t* data = pvPortMalloc(sizeof(tofData_t));
+    data->tof = 0;
+
+    dict_insert_result insert_result = dict_insert(dct, key);
+    *insert_result.datum_ptr = data;
+    return data;
+  }
+}
+
+neighbourData_t* getDataForNeighbour(dict* dct, const locoId_t id) {
   void** search_result = dict_search(dct, &id);
   if (search_result) {
     return (neighbourData_t *)*search_result;
   } else {
-    locoAddress_t* key = pvPortMalloc(sizeof(locoId_t));
+    locoId_t* key = pvPortMalloc(sizeof(locoId_t));
     *key = id;
 
     neighbourData_t* data = pvPortMalloc(sizeof(neighbourData_t));
@@ -135,7 +173,6 @@ neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id) {
     data->remoteTx = 0;
     data->clockCorrectionStorage.clockCorrection = 1;
     data->clockCorrectionStorage.clockCorrectionBucket = 0;
-    data->tof = 0;
 
     dict_insert_result insert_result = dict_insert(dct, key);
     *insert_result.datum_ptr = data;
@@ -176,11 +213,13 @@ void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId) {
   }
 }
 
-void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* dct) {
+void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* neighboursDct, dict* tofDct) {
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
 
-  neighbourData_t* neighbourData = getDataForNeighbour(dct, rxPacket->header.sourceId);
+  locoId_t remoteId = rxPacket->header.sourceId;
+
+  neighbourData_t* neighbourData = getDataForNeighbour(neighboursDct, remoteId);
   payload_t* payload = (payload_t*)&(rxPacket->payload);
 
   // Timestamp remote values
@@ -214,7 +253,8 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       const uint32_t localReply = (uint32_t)(remoteReply * clockCorrection);
       const uint32_t localRound = (uint32_t)(localRx - localTx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
 
-      neighbourData->tof = (localRound - localReply) / 2;
+      tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId);
+      tofData->tof = (localRound - localReply) / 2;
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       /*if (localReply > localRound) {

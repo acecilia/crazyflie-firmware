@@ -7,6 +7,7 @@
 #include "clockCorrectionStorage.h"
 
 typedef uint8_t locoId_t;
+typedef uint16_t locoIdx2_t;
 
 /**
  A type that relates the id of a drone with some associated information
@@ -37,7 +38,7 @@ typedef struct {
 } __attribute__((packed)) lpsSwarmPacket_t;
 
 /**
- A type that encapsulates the information stored in the dictionary
+ A type that encapsulates the information to keep about the neighbours
  */
 typedef struct {
   // Values to calculate clockCorrection
@@ -46,8 +47,16 @@ typedef struct {
 
   clockCorrectionStorage_t clockCorrectionStorage;
 
-  uint32_t tof; // To be set after reception
+  point_t position; // The coordinates of the anchor
+
 } __attribute__((packed)) neighbourData_t;
+
+/**
+ A type that encapsulates the information to keep track of the tof
+ */
+typedef struct {
+  uint32_t tof; // To be set after reception
+} __attribute__((packed)) tofData_t;
 
 typedef struct {
   void (*init)(void);
