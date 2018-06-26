@@ -350,13 +350,13 @@ void testProcessRxPacketWithoutPayload() {
   dwGetReceiveTimestamp_ReturnThruPtr_time(&localRxTimeStamp);
 
   // Create and fill rxPacket
-  lpsSwarmPacket_t* rxPacket = pvPortMalloc(sizeof(lpsSwarmPacket_t));
-  rxPacket->header.sourceId = remoteId;
-  rxPacket->header.tx = remoteTx;
-  rxPacket->header.payloadLength = 0;
+  lpsSwarmPacket_t rxPacket;
+  rxPacket.header.sourceId = remoteId;
+  rxPacket.header.tx = remoteTx;
+  rxPacket.header.payloadLength = 0;
 
   // Test
-  processRxPacket(&dummyDev, localId, rxPacket, dct);
+  processRxPacket(&dummyDev, localId, &rxPacket, dct);
 
   // Verify result
   neighbourData_t* currentNeighbourData = getDataForNeighbour(dct, remoteId);
