@@ -24,6 +24,7 @@ typedef struct {
  */
 typedef struct {
   locoId_t sourceId;
+  uint8_t seqNr; // Sequence number of this packet
   uint64_t tx; // TODO: see if we can reduce the size of data type
 
   uint8_t payloadLength; // Allows a logic limit of 256 pairs (which limits the maximum number of drones participating in the swarm to 256)
@@ -47,6 +48,7 @@ typedef struct {
   uint64_t remoteTx; // To be set after reception
 
   clockCorrectionStorage_t clockCorrectionStorage;
+  uint8_t expectedSeqNr; // Expected sequence number for the received packet
 
   point_t position; // The coordinates of the anchor
 

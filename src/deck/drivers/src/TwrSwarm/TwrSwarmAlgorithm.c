@@ -13,9 +13,12 @@ static lpsSwarmPacket_t packet;
  */
 static struct {
   dwDevice_t* dev; // Needed when sending tx packets at random times
+
   dict* neighboursDct;
   dict* tofDct;
+
   locoId_t localId;
+  uint8_t nextTxSeqNr; // Local sequence number of the transmitted packets
 
   // Add packet sequence number
 
@@ -58,7 +61,9 @@ static void init() {
   // Initialize the context
   ctx.neighboursDct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the neighbours data
   ctx.tofDct = hashtable2_dict_new(dict_uint16_cmp, dict_uint16_hash, 10); // Dictionary storing the tof data
+
   ctx.localId = generateId();
+  ctx.nextTxSeqNr = 0;
 
   // Related with random transmission
   ctx.averageTxDelay = calculateAverageTxDelay(0);
@@ -79,7 +84,7 @@ static void transmit(dwDevice_t *dev) {
 
   lpsSwarmPacket_t* txPacket = &packet;
 
-  setTxData(txPacket, ctx.localId, ctx.neighboursDct, ctx.tofDct);
+  setTxData(txPacket, ctx.localId, &ctx.nextTxSeqNr, ctx.neighboursDct, ctx.tofDct);
   unsigned int packetSize = calculatePacketSize(txPacket);
 
   // Set tx time inside txPacket

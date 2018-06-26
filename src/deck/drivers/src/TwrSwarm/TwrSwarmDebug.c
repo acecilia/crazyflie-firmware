@@ -30,6 +30,7 @@ debug_t debug = {
 
   .measurementFailure = 0,
   .idFailure = 0,
+  .reflections = 0,
 
   .blink = blink,
   .init = init
@@ -112,4 +113,5 @@ LOG_ADD(LOG_UINT32, auxiliaryValue, &debug.auxiliaryValue)
 
 LOG_ADD(LOG_UINT32, measurementFail, &debug.measurementFailure)
 LOG_ADD(LOG_UINT32, idFail, &debug.idFailure)
+LOG_ADD(LOG_UINT32, reflections, &debug.reflections)
 LOG_GROUP_STOP(twrSwarm)

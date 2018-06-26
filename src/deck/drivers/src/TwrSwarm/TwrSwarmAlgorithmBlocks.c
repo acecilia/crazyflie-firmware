@@ -42,9 +42,18 @@ static uint32_t ticksPerSecond = M2T(1000);
 /**********************************/
 
 /**
+ Verify if a packed sequence number is valid
+ */
+bool verifySeqNr(const uint8_t seqNr, const uint8_t expectedSeqNr) {
+  // If the sequence number was from 0 to 5 units less than the expectedSeqNr, we consider that packet a delayed reflexion
+  return (seqNr - expectedSeqNr) < CHAR_MAX - 5;
+}
+
+
+/**
  Calculates a unique id from two loco ids
  */
-locoIdx2_t getidFromIds(const locoId_t id1, const locoId_t id2) {
+locoIdx2_t geHashFromIds(const locoId_t id1, const locoId_t id2) {
   locoId_t leftPart;
   locoId_t rightPart;
 
@@ -142,7 +151,7 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
 }
 
 tofData_t* getTofDataBetween(dict* dct, const locoId_t id1, const locoId_t id2) {
-  locoIdx2_t id = getidFromIds(id1, id2);
+  locoIdx2_t id = geHashFromIds(id1, id2);
 
   void** search_result = dict_search(dct, &id);
   if (search_result) {
@@ -184,11 +193,12 @@ unsigned int calculatePacketSize(lpsSwarmPacket_t* packet) {
   return sizeof(lpsSwarmPacketHeader_t) + packet->header.payloadLength * sizeof(payload_t);
 }
 
-void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, dict* neighbourDct, dict* tofDict) {
+void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeqNr, dict* neighbourDct, dict* tofDict) {
   uint8_t payloadLength = dict_count(neighbourDct);
 
   txPacket->header.tx = 0; // This will be filled after setting the data of the txPacket, and inmediatelly before starting the transmission. For now, we zero it
   txPacket->header.sourceId = sourceId;
+  txPacket->header.seqNr = *nextTxSeqNr; *nextTxSeqNr += 1;
   txPacket->header.payloadLength = payloadLength;
 
   payload_t* payload = (payload_t*)&(txPacket->payload);
@@ -216,12 +226,24 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, dict* neighbourDct
 }
 
 void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* neighboursDct, dict* tofDct) {
+  locoId_t remoteId = rxPacket->header.sourceId;
+
+  uint8_t seqNr = rxPacket->header.seqNr;
+  neighbourData_t* neighbourData = getDataForNeighbour(neighboursDct, remoteId);
+
+  if (verifySeqNr(seqNr, neighbourData->expectedSeqNr) == false) {
+    // Received packet is a delayed reflection
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+    debug.reflections++;
+#endif
+    return;
+  } else {
+    neighbourData->expectedSeqNr = seqNr++;
+  }
+
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
 
-  locoId_t remoteId = rxPacket->header.sourceId;
-
-  neighbourData_t* neighbourData = getDataForNeighbour(neighboursDct, remoteId);
 
   // Timestamp remote values
   const uint64_t prevRemoteTx = neighbourData->remoteTx;
