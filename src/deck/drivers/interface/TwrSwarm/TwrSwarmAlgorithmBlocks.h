@@ -13,5 +13,5 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev);
 neighbourData_t* getDataForNeighbour(dict* dct, locoId_t id);
 unsigned int calculatePacketSize(lpsSwarmPacket_t* packet);
 void setTxData(lpsSwarmPacket_t* txPacket, dict* dct, locoId_t sourceId);
-void processRxPacket(dwDevice_t *dev, locoId_t localId, lpsSwarmPacket_t* rxPacket, dict* dct);
+void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* dct);
 #endif /* TwrSwarmAlgorithmBlocks_h */

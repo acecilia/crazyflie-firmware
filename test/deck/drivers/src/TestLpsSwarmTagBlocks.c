@@ -55,6 +55,13 @@ static payload_t* testFindPairInPayload(lpsSwarmPacket_t* packet, locoId_t id) {
   return NULL;
 }
 
+/**
+ Adjust the bit size of the number
+ */
+static uint64_t adjustBitSize(const uint64_t value, const uint64_t mask) {
+    return value & mask;
+}
+
 // Tests
 
 void setUp(void) {
@@ -233,7 +240,8 @@ void testSetTxDataWithPayload() {
   for (uint8_t i = 0; i < expectedPayloadLength; i++) {
     payload_t* pair = testFindPairInPayload(&txPacket, i);
     TEST_ASSERT_EQUAL_UINT8(i, pair->id);
-    TEST_ASSERT_EQUAL_UINT64(i, pair->time);
+    TEST_ASSERT_EQUAL_UINT64(i, pair->rx);
+    TEST_ASSERT_EQUAL_UINT64(i + 1, pair->tx);
   }
 }
 
@@ -244,18 +252,19 @@ void testProcessRxPacketWithPayload() {
   // * remoteTx = remoteRx + remoteReply            ---> localRx = (clockCorrection * remoteTx) + tof
 
   // Expected values: giving them pair values we ensure proper integer operations (mainly division) when calculating the actual values
-  uint32_t tof = 4 * 10000;                             // Tof meassured by local clock
+  uint32_t tof = 32640;                                 // Tof meassured by local clock
   double clockCorrection = 1.0 + 10e-6;                 // Local clock works <clockCorrection> times faster than remote clock
-  uint32_t localReply = 4 * 10000;                      // Local reply time meassured by local clock
-  uint32_t remoteReply = localReply / clockCorrection;  // Remote reply time meassured by Remote clock
+  uint32_t localReply = 400000;                         // Local reply time meassured by local clock. Any number.
+  uint32_t remoteReply = 500000;                        // Remote reply time meassured by Remote clock. Any number.
 
   // Timestamp values
-  uint64_t prevRemoteTx = 20500;
-  uint64_t prevlocalRx = (clockCorrection * prevRemoteTx) + tof;
-  uint64_t localTx = prevlocalRx + localReply;
-  uint64_t remoteRx = (localTx + tof) / clockCorrection;
-  uint64_t remoteTx = remoteRx + remoteReply;
-  uint64_t localRx = (clockCorrection * remoteTx) + tof;
+  uint64_t mask = 0xFFFFFFFFFF;
+  uint64_t prevRemoteTx = adjustBitSize(mask - 300000, mask);   // Any number
+  uint64_t prevlocalRx = adjustBitSize(mask - 50000, mask);     // Any number
+  uint64_t localTx = adjustBitSize(prevlocalRx + localReply, mask);
+  uint64_t remoteRx = adjustBitSize(prevRemoteTx + ((localReply + 2 * tof) / clockCorrection), mask);
+  uint64_t remoteTx = adjustBitSize(remoteRx + remoteReply, mask);
+  uint64_t localRx = adjustBitSize(localTx + ((clockCorrection * remoteReply) + 2 * tof), mask);
 
   //Ids
   locoId_t remoteId = 5;
@@ -281,25 +290,26 @@ void testProcessRxPacketWithPayload() {
   dwGetReceiveTimestamp_ReturnThruPtr_time(&localRxTimeStamp);
 
   // Create and fill rxPacket
-  lpsSwarmPacket_t* rxPacket = pvPortMalloc(sizeof(lpsSwarmPacket_t) + 1 * sizeof(payload_t));
-  rxPacket->header.sourceId = remoteId;
-  rxPacket->header.tx = remoteTx;
-  rxPacket->header.payloadLength = 1;
+  lpsSwarmPacket_t rxPacket;
+  rxPacket.header.sourceId = remoteId;
+  rxPacket.header.tx = remoteTx;
+  rxPacket.header.payloadLength = 1;
   payload_t pair = {
     .id = localId,
-    .time = remoteRx
+    .rx = remoteRx,
+    .tx = localTx
   };
-  payload_t* payload = (payload_t*)&rxPacket->payload;
+  payload_t* payload = (payload_t*)&rxPacket.payload;
   payload[0] = pair;
 
   // Test
-  processRxPacket(&dummyDev, localId, rxPacket, dct, localTx);
+  processRxPacket(&dummyDev, localId, &rxPacket, dct);
 
   // Verify result
   neighbourData_t* currentNeighbourData = getDataForNeighbour(dct, remoteId);
   TEST_ASSERT_EQUAL_UINT64(remoteTx, currentNeighbourData->remoteTx);
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
-  TEST_ASSERT_EQUAL_UINT32(tof - 1, currentNeighbourData->tof); // The -1 is required, because in the conversion between double and integer the system cuts the number down
+  TEST_ASSERT_EQUAL_UINT32(tof, currentNeighbourData->tof); // It may be that -1 is required, because in the conversion between double and integer the system cuts the number down
   TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue
   TEST_ASSERT_EQUAL_UINT(0, currentNeighbourData->clockCorrectionStorage.clockCorrectionBucket);
 }
@@ -332,8 +342,7 @@ void testProcessRxPacketWithoutPayload() {
   rxPacket->header.payloadLength = 0;
 
   // Test
-  uint64_t dummyLocalTx = 9999; // Not needed, as localTx is only used when there is payload
-  processRxPacket(&dummyDev, localId, rxPacket, dct, dummyLocalTx);
+  processRxPacket(&dummyDev, localId, rxPacket, dct);
 
   // Verify result
   neighbourData_t* currentNeighbourData = getDataForNeighbour(dct, remoteId);
