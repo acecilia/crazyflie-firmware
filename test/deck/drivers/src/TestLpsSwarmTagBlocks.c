@@ -260,8 +260,8 @@ void testProcessRxPacketWithPayload() {
   // Timestamp values
   uint64_t mask = 0xFFFFFFFFFF;
   uint64_t prevRemoteTx = adjustBitSize(mask - 300000, mask);   // Any number
-  uint64_t prevlocalRx = adjustBitSize(mask - 50000, mask);     // Any number
-  uint64_t localTx = adjustBitSize(prevlocalRx + localReply, mask);
+  uint64_t prevLocalRx = adjustBitSize(mask - 50000, mask);     // Any number
+  uint64_t localTx = adjustBitSize(prevLocalRx + localReply, mask);
   uint64_t remoteRx = adjustBitSize(prevRemoteTx + ((localReply + 2 * tof) / clockCorrection), mask);
   uint64_t remoteTx = adjustBitSize(remoteRx + remoteReply, mask);
   uint64_t localRx = adjustBitSize(localTx + ((clockCorrection * remoteReply) + 2 * tof), mask);
@@ -276,7 +276,7 @@ void testProcessRxPacketWithPayload() {
   // Set previous data
   neighbourData_t* prevNeighbourData = getDataForNeighbour(dct, remoteId);
   prevNeighbourData->remoteTx = prevRemoteTx;
-  prevNeighbourData->localRx = prevlocalRx;
+  prevNeighbourData->localRx = prevLocalRx;
   prevNeighbourData->clockCorrectionStorage.clockCorrection = 5; // A wrong value on pourpose, so the proper clock correction is set and then we can assert it
   prevNeighbourData->clockCorrectionStorage.clockCorrectionBucket = 0;
 
@@ -315,9 +315,16 @@ void testProcessRxPacketWithPayload() {
 }
 
 void testProcessRxPacketWithoutPayload() {
+  // Preparation
+  uint64_t mask = 0xFFFFFFFFFF;
+  double clockCorrection = 1.0 + 10e-6;
+  uint32_t localRxDifference = 460222;
+
   // Timestamp values
-  uint64_t localRx = 12345;
-  uint64_t remoteTx = 23456;
+  uint64_t prevLocalRx = adjustBitSize(4500, mask);
+  uint64_t localRx = adjustBitSize(prevLocalRx + localRxDifference, mask);
+  uint64_t prevRemoteTx = adjustBitSize(20800, mask);
+  uint64_t remoteTx =  adjustBitSize(prevRemoteTx + localRxDifference / clockCorrection, mask);
 
   //Ids
   locoId_t remoteId = 5;
@@ -325,6 +332,13 @@ void testProcessRxPacketWithoutPayload() {
 
   // Create the dictionary
   dict* dct = testCreateTestDictionary();
+
+  // Set previous data
+  neighbourData_t* prevNeighbourData = getDataForNeighbour(dct, remoteId);
+  prevNeighbourData->remoteTx = prevRemoteTx;
+  prevNeighbourData->localRx = prevLocalRx;
+  prevNeighbourData->clockCorrectionStorage.clockCorrection = 5; // A wrong value on pourpose, so the proper clock correction is set and then we can assert it
+  prevNeighbourData->clockCorrectionStorage.clockCorrectionBucket = 0;
 
   // Setup the mock in charge of generating localRx
   dwTime_t localRxTimeStamp = { .full = localRx };
@@ -348,4 +362,5 @@ void testProcessRxPacketWithoutPayload() {
   neighbourData_t* currentNeighbourData = getDataForNeighbour(dct, remoteId);
   TEST_ASSERT_EQUAL_UINT64(remoteTx, currentNeighbourData->remoteTx);
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
+  TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue
 }

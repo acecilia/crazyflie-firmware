@@ -184,10 +184,16 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   payload_t* payload = (payload_t*)&(rxPacket->payload);
 
   // Timestamp remote values
+  const uint64_t prevRemoteTx = neighbourData->remoteTx;
   const uint64_t remoteTx = rxPacket->header.tx;
 
   // Timestamp local values
+  const uint64_t prevLocalRx = neighbourData->localRx;
   const uint64_t localRx = rxTimestamp.full;
+
+  // Calculate clock correction
+  const double clockCorrectionCandidate = clockCorrectionEngine.calculateClockCorrection(localRx, prevLocalRx, remoteTx, prevRemoteTx, 0xFFFFFFFFFF /* 40 bits */);
+  clockCorrectionEngine.updateClockCorrection(&neighbourData->clockCorrectionStorage, clockCorrectionCandidate);
 
   for(int i = 0; i < rxPacket->header.payloadLength; i++) {
     if (payload[i].id == localId) { // To be executed only once
@@ -198,17 +204,12 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
 
       // Timestamp remote values
       const uint64_t remoteRx = payload[i].rx;
-      const uint64_t prevRemoteTx = neighbourData->remoteTx;
 
       // Timestamp local values
       const uint64_t localTx = payload[i].tx;
-      const uint64_t prevLocalRx = neighbourData->localRx;
 
       // Calculations
-      const double clockCorrectionCandidate = clockCorrectionEngine.calculateClockCorrection(localRx, prevLocalRx, remoteTx, prevRemoteTx, 0xFFFFFFFFFF /* 40 bits */);
-      clockCorrectionEngine.updateClockCorrection(&neighbourData->clockCorrectionStorage, clockCorrectionCandidate);
       const double clockCorrection = clockCorrectionEngine.getClockCorrection(&neighbourData->clockCorrectionStorage);
-
       const uint32_t remoteReply = (uint32_t)(remoteTx - remoteRx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
       const uint32_t localReply = (uint32_t)(remoteReply * clockCorrection);
       const uint32_t localRound = (uint32_t)(localRx - localTx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
