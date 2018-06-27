@@ -6,6 +6,8 @@
 #include "TwrSwarmDebug.h"
 #endif
 
+#include "debug.h"
+
 static lpsSwarmPacket_t packet;
 
 /**
@@ -55,14 +57,17 @@ static void timerCallback(xTimerHandle timer) {
 /**
  Initialize all the required variables of the algorithm
  */
-static void init() {
+static void init(dwDevice_t *dev) {
   configure_dict_malloc();
+  initRandomizationEngine(dev);
 
   // Initialize the context
   ctx.neighboursDct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the neighbours data
   ctx.tofDct = hashtable2_dict_new(dict_uint16_cmp, dict_uint16_hash, 10); // Dictionary storing the tof data
 
   ctx.localId = generateId();
+  DEBUG_PRINT("Swarm Id: %d\n", ctx.localId);
+
   ctx.nextTxSeqNr = 0;
 
   // Related with random transmission

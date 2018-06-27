@@ -85,6 +85,43 @@ void setUp(void) {
 void tearDown(void) {
 }
 
+/**
+ Adjust the bit size of the number
+ */
+void testGenerateId() {
+  // Fixture
+  const locoId_t firstId = generateId();
+  const uint8_t maxCount = 10;
+  uint8_t i = 0;
+
+  // Test
+  for (; i <= maxCount; i++) {
+    const locoId_t newId = generateId();
+    if (firstId != newId) {
+      break;
+    }
+  }
+
+  TEST_ASSERT_TRUE(i < maxCount);
+}
+
+void testVerifySeqNr() {
+  // Fixture
+  uint8_t expectedSeqNr = 10;
+
+  for (uint8_t i = 0; i <= 4; i++) {
+    // Test
+    const bool result = verifySeqNr(i, expectedSeqNr);
+
+    // Assert
+    if ((expectedSeqNr - 5) <= i && i < expectedSeqNr) {
+      TEST_ASSERT_EQUAL(false, result);
+    } else {
+      TEST_ASSERT_EQUAL(true, result);
+    }
+  }
+}
+
 void testAdjustTxRxTimeSmallNumber() {
   uint64_t initialValue = 0x000001FF;
   uint64_t expectedValue = 0x00000200;
@@ -225,15 +262,31 @@ void testGetDataForNeighbourWithFilledDictionaryAndDifferentKeys() {
   TEST_ASSERT_NOT_EQUAL(&initialData, result);
 }
 
+void testGetDataForNeighbourAndCount() {
+  // Fixture
+  dict* dct = testCreateNeighboursDictionary();
+  uint8_t numberOfNeighbours = 123;
+
+  // Test
+  for (uint8_t i = 0; i < numberOfNeighbours; i++) {
+    neighbourData_t* result = getDataForNeighbour(dct, i);
+  }
+
+  // Assert
+  uint8_t count = dict_count(dct);
+  TEST_ASSERT_EQUAL_UINT8(numberOfNeighbours, count);
+}
+
 void testSetTxDataWithoutPayload() {
   // Fixture
   dict* neighbourDct = testCreateNeighboursDictionary();
   dict* tofDct = testCreateTofDictionary();
   lpsSwarmPacket_t txPacket;
   locoId_t sourceId = 6;
+  uint8_t nextSeqNr = 0;
 
   // Test
-  setTxData(&txPacket, sourceId, neighbourDct, tofDct);
+  setTxData(&txPacket, sourceId, &nextSeqNr, neighbourDct, tofDct);
   unsigned int txPacketLength = calculatePacketSize(&txPacket);
 
   // Assert
@@ -243,6 +296,8 @@ void testSetTxDataWithoutPayload() {
   TEST_ASSERT_EQUAL_UINT8(expectedSourceId, txPacket.header.sourceId);
   TEST_ASSERT_EQUAL_UINT64(0, txPacket.header.tx);
   TEST_ASSERT_EQUAL_UINT8(0, txPacket.header.payloadLength);
+  TEST_ASSERT_EQUAL_UINT8(0, txPacket.header.seqNr);
+  TEST_ASSERT_EQUAL_UINT8(1, nextSeqNr);
 }
 
 void testSetTxDataWithPayload() {
@@ -251,6 +306,7 @@ void testSetTxDataWithPayload() {
   dict* tofDct = testCreateTofDictionary();
   lpsSwarmPacket_t txPacket;
   locoId_t sourceId = 6;
+  uint8_t nextSeqNr = 0;
 
   // Fill dictionary
   uint8_t elementsCount = 5;
@@ -263,7 +319,7 @@ void testSetTxDataWithPayload() {
   }
 
   // Test
-  setTxData(&txPacket, sourceId, neighbourDct, tofDct);
+  setTxData(&txPacket, sourceId, &nextSeqNr, neighbourDct, tofDct);
   unsigned int txPacketLength = calculatePacketSize(&txPacket);
 
   // Assert
@@ -281,6 +337,8 @@ void testSetTxDataWithPayload() {
     TEST_ASSERT_EQUAL_UINT64(i + 1, data->tx);
     TEST_ASSERT_EQUAL_UINT16(i + 2, data->tof);
   }
+  TEST_ASSERT_EQUAL_UINT8(0, txPacket.header.seqNr);
+  TEST_ASSERT_EQUAL_UINT8(1, nextSeqNr);
 }
 
 void testProcessRxPacketWithPayload() {
@@ -369,15 +427,17 @@ void testProcessRxPacketWithoutPayload() {
   uint64_t prevRemoteTx = adjustBitSize(20800, mask);
   uint64_t remoteTx =  adjustBitSize(prevRemoteTx + localRxDifference / clockCorrection, mask);
 
-  //Ids
+  // Other parameters
   locoId_t remoteId = 5;
   locoId_t localId = 6;
+  uint8_t expectedSeqNr = 0;
 
   // Create the dictionary
   dict* neighbourDct = testCreateNeighboursDictionary();
 
   // Set previous data
   neighbourData_t* prevNeighbourData = getDataForNeighbour(neighbourDct, remoteId);
+  prevNeighbourData->expectedSeqNr = expectedSeqNr;
   prevNeighbourData->remoteTx = prevRemoteTx;
   prevNeighbourData->localRx = prevLocalRx;
   prevNeighbourData->clockCorrectionStorage.clockCorrection = 5; // A wrong value on pourpose, so the proper clock correction is set and then we can assert it
@@ -398,6 +458,7 @@ void testProcessRxPacketWithoutPayload() {
   // Create and fill rxPacket
   lpsSwarmPacket_t rxPacket;
   rxPacket.header.sourceId = remoteId;
+  rxPacket.header.seqNr = expectedSeqNr;
   rxPacket.header.tx = remoteTx;
   rxPacket.header.payloadLength = 0;
 
@@ -409,4 +470,5 @@ void testProcessRxPacketWithoutPayload() {
   TEST_ASSERT_EQUAL_UINT64(remoteTx, currentNeighbourData->remoteTx);
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
   TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue
+  TEST_ASSERT_EQUAL_UINT8(expectedSeqNr + 1, currentNeighbourData->expectedSeqNr);
 }

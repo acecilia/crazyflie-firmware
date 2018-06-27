@@ -46,7 +46,7 @@ static uint32_t ticksPerSecond = M2T(1000);
  */
 bool verifySeqNr(const uint8_t seqNr, const uint8_t expectedSeqNr) {
   // If the sequence number was from 0 to 5 units less than the expectedSeqNr, we consider that packet a delayed reflexion
-  return (seqNr - expectedSeqNr) < CHAR_MAX - 5;
+  return ((uint8_t)(seqNr - expectedSeqNr)) <= UCHAR_MAX - 5;
 }
 
 
@@ -89,9 +89,26 @@ uint32_t calculateAverageTxDelay(uint8_t numberOfNeighbours) {
 }
 
 /**
+ Makes sure the seed for rand is set before using it
+ */
+static bool randIsInit = false;
+
+/**
+ Set a random seed for the rand function
+ */
+void initRandomizationEngine(dwDevice_t *dev) {
+  dwTime_t now = { .full = 0 };
+  dwGetSystemTimestamp(dev, &now);
+
+  srand(now.low32);
+  randIsInit = true;
+}
+
+/**
  Generates a random id, to be used on the packets
  */
 locoId_t generateId() {
+  ASSERT(randIsInit);
   return (locoId_t)rand();
 }
 
@@ -114,7 +131,7 @@ locoId_t generateIdNotIn(lpsSwarmPacket_t* packet, dict* dct) {
     }
   }
 
-  // Makes sure the cantidateId is not the id of any of the known drones
+  // Makes sure the candidateId is not the id of any of the known drones
   void** search_result = dict_search(dct, &cantidateId);
   if (search_result) {
     return generateIdNotIn(packet, dct);
@@ -226,11 +243,12 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeq
 }
 
 void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* neighboursDct, dict* tofDct) {
+  // Get neighbour data
   locoId_t remoteId = rxPacket->header.sourceId;
-
-  uint8_t seqNr = rxPacket->header.seqNr;
   neighbourData_t* neighbourData = getDataForNeighbour(neighboursDct, remoteId);
 
+  // Check sequence number
+  uint8_t seqNr = rxPacket->header.seqNr;
   if (verifySeqNr(seqNr, neighbourData->expectedSeqNr) == false) {
     // Received packet is a delayed reflection
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
@@ -238,12 +256,12 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
 #endif
     return;
   } else {
-    neighbourData->expectedSeqNr = seqNr++;
+    neighbourData->expectedSeqNr = seqNr + 1;
   }
 
+  // Get rx timestamp
   dwTime_t rxTimestamp = { .full = 0 };
   dwGetReceiveTimestamp(dev, &rxTimestamp);
-
 
   // Timestamp remote values
   const uint64_t prevRemoteTx = neighbourData->remoteTx;
@@ -258,7 +276,9 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   clockCorrectionEngine.updateClockCorrection(&neighbourData->clockCorrectionStorage, clockCorrectionCandidate);
   const double clockCorrection = clockCorrectionEngine.getClockCorrection(&neighbourData->clockCorrectionStorage);
 
+  // Cast payload, for easier access
   payload_t* payload = (payload_t*)&(rxPacket->payload);
+
   for(int i = 0; i < rxPacket->header.payloadLength; i++) {
     if (payload[i].id == localId) {
       // TODO: Andres. See what can we use the transmitted tof for
@@ -282,18 +302,14 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       tofData->tof = (uint16_t)((localRound - localReply) / 2);
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-      /*if (localReply > localRound) {
+      if (localReply > localRound) {
         debug.measurementFailure++;
 
         debug.localRx = localRx;
         debug.localTx = localTx;
         debug.remoteRx = remoteRx;
         debug.remoteTx = remoteTx;
-
-        debug.remoteReply = remoteReply;
-        debug.localReply = localReply;
-        debug.localRound = localRound;
-      }*/
+      }
 
       debug.auxiliaryValue = (localRound - remoteReply) / 2;
 
@@ -301,18 +317,20 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       debug.localReply = localReply;
       debug.remoteReply = remoteReply;
 
-      debug.clockCorrectionCandidate = (uint32_t)(clockCorrectionCandidate * 1000000000);
-      debug.clockCorrection = (uint32_t)(clockCorrection * 1000000000);
-
       debug.tof = tofData->tof;
-
-      debug.dctCount = dict_count(neighboursDct);
 #endif
     } else {
       tofData_t* tofData = getTofDataBetween(tofDct, remoteId, payload[i].id);
       tofData->tof = (uint16_t)(payload[i].tof * clockCorrection);
     }
   }
+
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+  debug.clockCorrectionCandidate = (uint32_t)(clockCorrectionCandidate * 1000000000);
+  debug.clockCorrection = (uint32_t)(clockCorrection * 1000000000);
+
+  debug.dctCount = dict_count(neighboursDct);
+#endif
 
   // Save the remoteTx, so we can use it to calculate the clockCorrection
   neighbourData->remoteTx = remoteTx;

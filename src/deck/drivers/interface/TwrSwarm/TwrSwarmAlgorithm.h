@@ -62,7 +62,7 @@ typedef struct {
 } __attribute__((packed)) tofData_t;
 
 typedef struct {
-  void (*init)(void);
+  void (*init)(dwDevice_t *dev);
   uint32_t (*onEvent)(dwDevice_t *dev, uwbEvent_t event);
 } twrSwarmAlgorithm_t;
 

@@ -77,8 +77,6 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
 
 static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
 {
-  twrSwarmAlgorithm.init();
-
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
   debug.init();
 #endif
@@ -86,6 +84,8 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
   dwSetReceiveWaitTimeout(dev, TWR_RECEIVE_TIMEOUT);
   dwCommitConfiguration(dev);
   rangingOk = false;
+
+  twrSwarmAlgorithm.init(dev);
 }
 
 static bool isRangingOk()

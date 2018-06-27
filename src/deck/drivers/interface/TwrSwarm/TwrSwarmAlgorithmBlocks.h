@@ -8,6 +8,7 @@ uint32_t calculateAverageTxDelay(uint8_t numberOfNeighbours);
 
 bool verifySeqNr(const uint8_t seqNr, const uint8_t expectedSeqNr);
 locoIdx2_t geHashFromIds(const locoId_t id1, const locoId_t id2);
+void initRandomizationEngine(dwDevice_t *dev);
 locoId_t generateId(void);
 locoId_t generateIdNotIn(lpsSwarmPacket_t* packet, dict* dct);
 void adjustTxRxTime(dwTime_t *time);

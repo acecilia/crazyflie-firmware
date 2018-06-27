@@ -4,6 +4,8 @@
 #include "FreeRTOS.h"
 #include "timers.h"
 
+#include "debug.h"
+
 static void blink(led_t led);
 static void init();
 
@@ -83,6 +85,8 @@ static void logTimerCallback(xTimerHandle timer) {
   lastKnownSuccededRangingPerSec = debug.succededRangingPerSec;
   debug.totalRangingPerSec = 0;
   debug.succededRangingPerSec = 0;
+
+  DEBUG_PRINT("Dict: %ld\n", debug.dctCount);
 }
 
 static void init() {
