@@ -273,7 +273,13 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
 
   // Calculate clock correction
   const double clockCorrectionCandidate = clockCorrectionEngine.calculateClockCorrection(localRx, prevLocalRx, remoteTx, prevRemoteTx, 0xFFFFFFFFFF /* 40 bits */);
-  clockCorrectionEngine.updateClockCorrection(&neighbourData->clockCorrectionStorage, clockCorrectionCandidate);
+  bool clockCorrectionCandidateAccepted = clockCorrectionEngine.updateClockCorrection(&neighbourData->clockCorrectionStorage, clockCorrectionCandidate);
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+  debug.clockUpdated++;
+  if (!clockCorrectionCandidateAccepted) {
+    debug.clockNotAccepted++;
+  }
+#endif
   const double clockCorrection = clockCorrectionEngine.getClockCorrection(&neighbourData->clockCorrectionStorage);
 
   // Cast payload, for easier access
@@ -311,7 +317,8 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
         debug.remoteTx = remoteTx;
       }
 
-      debug.auxiliaryValue = (localRound - remoteReply) / 2;
+      const uint32_t localReply2 = (uint32_t)(remoteReply * clockCorrectionCandidate);
+      debug.auxiliaryValue = (localRound - localReply2) / 2;
 
       debug.localRound = localRound;
       debug.localReply = localReply;

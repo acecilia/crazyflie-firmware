@@ -18,8 +18,12 @@ debug_t debug = {
   .remoteReply = 1000,
   .localReply = 2000,
   .localRound = 3000,
+
   .clockCorrection = 3800,
   .clockCorrectionCandidate = 3900,
+  .clockUpdated = 0,
+  .clockNotAccepted = 0,
+  .clockAcceptanceRate = 0,
 
   .tof = 4000,
 
@@ -86,6 +90,10 @@ static void logTimerCallback(xTimerHandle timer) {
   debug.totalRangingPerSec = 0;
   debug.succededRangingPerSec = 0;
 
+  debug.clockAcceptanceRate = (debug.clockUpdated - debug.clockNotAccepted) * 100 / debug.clockUpdated;
+  debug.clockUpdated = 0;
+  debug.clockNotAccepted = 0;
+
   DEBUG_PRINT("Dict: %ld\n", debug.dctCount);
 }
 
@@ -103,8 +111,10 @@ LOG_ADD(LOG_FLOAT, remoteTx, &debug.localTx)
 LOG_ADD(LOG_UINT32, remoteReply, &debug.remoteReply)
 LOG_ADD(LOG_UINT32, localReply, &debug.localReply)
 LOG_ADD(LOG_UINT32, localRound, &debug.localRound)
+
 LOG_ADD(LOG_UINT32, ckCorr, &debug.clockCorrection)
 LOG_ADD(LOG_UINT32, ckCorrCandidate, &debug.clockCorrectionCandidate)
+LOG_ADD(LOG_UINT32, clockAcceptance, &debug.clockAcceptanceRate)
 
 LOG_ADD(LOG_UINT32, tof, &debug.tof)
 

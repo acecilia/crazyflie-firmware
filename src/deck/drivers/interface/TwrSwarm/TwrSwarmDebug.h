@@ -13,8 +13,12 @@ typedef struct {
   uint32_t remoteReply;
   uint32_t localReply;
   uint32_t localRound;
+  
   uint32_t clockCorrection;
   uint32_t clockCorrectionCandidate;
+  uint32_t clockUpdated;
+  uint32_t clockNotAccepted;
+  uint32_t clockAcceptanceRate;
 
   uint32_t tof;
 
