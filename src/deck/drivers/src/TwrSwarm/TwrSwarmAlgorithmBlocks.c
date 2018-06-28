@@ -7,6 +7,8 @@
 #include "TwrSwarmDebug.h"
 #endif
 
+// #pragma GCC diagnostic warning "-Wconversion"
+
 /* Clock correction */
 /**********************************/
 
@@ -27,7 +29,7 @@
 /* Timestamp truncation */
 /**********************************/
 
-#define DW1000_MAXIMUM_COUNT_MASK (uint64_t)( 0xFFFFFFFFFF ) //The maximum timestamp the DW1000 can return (40 bits)
+#define DW1000_MAXIMUM_COUNT_MASK (uint64_t)(0xFFFFFFFFFF) //The maximum timestamp the DW1000 can return (40 bits)
 
 /**********************************/
 
@@ -79,7 +81,7 @@ uint32_t calculateRandomDelayToNextTx(uint32_t averageTxDelay) {
  Calculates the average tx delay based on the number of drones around
  */
 uint32_t calculateAverageTxDelay(uint8_t numberOfNeighbours) {
-  uint16_t freq = AVERAGE_TX_FREQ / (numberOfNeighbours + 1);
+  uint16_t freq = (uint16_t)(AVERAGE_TX_FREQ / (numberOfNeighbours + 1));
 
   if (freq > MAX_TX_FREQ) {
     freq = MAX_TX_FREQ;
@@ -256,7 +258,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
 #endif
     return;
   } else {
-    neighbourData->expectedSeqNr = seqNr + 1;
+    neighbourData->expectedSeqNr = (uint8_t)(seqNr + 1);
   }
 
   // Get rx timestamp
@@ -317,12 +319,14 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
         debug.remoteTx = remoteTx;
       }
 
+      /*
       uint32_t localReply2 = (uint32_t)(remoteReply * clockCorrection);
       if (!clockCorrectionCandidateAccepted) {
         const uint64_t tickCount_in_cl_x = (remoteTx - prevRemoteTx) & 0xFFFFFFFFFF;
         const int32_t replyCorrection = (int32_t)((clockCorrectionCandidate - clockCorrection) * tickCount_in_cl_x);
         localReply2 += replyCorrection;
-      }
+      }*/
+      const uint32_t localReply2 = (uint32_t)(remoteReply * clockCorrectionCandidate);
       debug.auxiliaryValue = (localRound - localReply2) / 2;
 
       debug.localRound = localRound;
@@ -341,7 +345,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   debug.clockCorrectionCandidate = (uint32_t)(clockCorrectionCandidate * 1000000000);
   debug.clockCorrection = (uint32_t)(clockCorrection * 1000000000);
 
-  debug.dctCount = dict_count(neighboursDct);
+  debug.dctCount = dict_count(tofDct);
 #endif
 
   // Save the remoteTx, so we can use it to calculate the clockCorrection
