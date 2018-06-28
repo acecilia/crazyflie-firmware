@@ -118,7 +118,7 @@ void lpsTdoaStatsUpdate() {
 }
 
 
-LOG_GROUP_START(tdoa3)
+/*LOG_GROUP_START(tdoa3)
 LOG_ADD(LOG_UINT16, stRx, &packetsReceivedRate)
 LOG_ADD(LOG_UINT16, stEst, &packetsToEstimatorRate)
 LOG_ADD(LOG_UINT16, stTime, &timeIsGoodRate)
@@ -138,4 +138,4 @@ LOG_GROUP_STOP(tdoa3)
 PARAM_GROUP_START(tdoa3)
 PARAM_ADD(PARAM_UINT8, logId, &newAnchorId)
 PARAM_ADD(PARAM_UINT8, logOthrId, &newRemoteAnchorId)
-PARAM_GROUP_STOP(tdoa3)
+PARAM_GROUP_STOP(tdoa3)*/

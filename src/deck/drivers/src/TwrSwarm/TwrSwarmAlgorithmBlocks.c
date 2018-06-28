@@ -317,7 +317,12 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
         debug.remoteTx = remoteTx;
       }
 
-      const uint32_t localReply2 = (uint32_t)(remoteReply * clockCorrectionCandidate);
+      uint32_t localReply2 = (uint32_t)(remoteReply * clockCorrection);
+      if (!clockCorrectionCandidateAccepted) {
+        const uint64_t tickCount_in_cl_x = (remoteTx - prevRemoteTx) & 0xFFFFFFFFFF;
+        const int32_t replyCorrection = (int32_t)((clockCorrectionCandidate - clockCorrection) * tickCount_in_cl_x);
+        localReply2 += replyCorrection;
+      }
       debug.auxiliaryValue = (localRound - localReply2) / 2;
 
       debug.localRound = localRound;
