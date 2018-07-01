@@ -2,6 +2,8 @@
 #include "clockCorrectionEngine.h"
 #include <stdlib.h>
 #include "limits.h"
+#include "stabilizer_types.h"
+#include "estimator_kalman.h"
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
@@ -55,7 +57,7 @@ bool verifySeqNr(const uint8_t seqNr, const uint8_t expectedSeqNr) {
 /**
  Calculates a unique id from two loco ids
  */
-locoIdx2_t geHashFromIds(const locoId_t id1, const locoId_t id2) {
+locoIdx2_t getHashFromIds(const locoId_t id1, const locoId_t id2) {
   locoId_t leftPart;
   locoId_t rightPart;
 
@@ -169,42 +171,57 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   return transmitTime;
 }
 
-tofData_t* getTofDataBetween(dict* dct, const locoId_t id1, const locoId_t id2) {
-  locoIdx2_t id = geHashFromIds(id1, id2);
+tofData_t* getTofDataBetween(dict* dct, const locoId_t id1, const locoId_t id2, const bool insertIfNotFound) {
+  locoIdx2_t id = getHashFromIds(id1, id2);
 
   void** search_result = dict_search(dct, &id);
   if (search_result) {
     return (tofData_t *)*search_result;
   } else {
-    locoIdx2_t* key = pvPortMalloc(sizeof(locoIdx2_t));
-    *key = id;
+    if (insertIfNotFound) {
+      locoIdx2_t* key = pvPortMalloc(sizeof(locoIdx2_t));
+      *key = id;
 
-    tofData_t* data = pvPortMalloc(sizeof(tofData_t));
-    data->tof = 0;
+      tofData_t* data = pvPortMalloc(sizeof(tofData_t));
+      data->tof = 0;
 
-    dict_insert_result insert_result = dict_insert(dct, key);
-    *insert_result.datum_ptr = data;
-    return data;
+      dict_insert_result insert_result = dict_insert(dct, key);
+      *insert_result.datum_ptr = data;
+      return data;
+    } else {
+      return NULL;
+    }
   }
 }
 
-neighbourData_t* getDataForNeighbour(dict* dct, const locoId_t id) {
+neighbourData_t* getDataForNeighbour(dict* dct, const locoId_t id, const bool insertIfNotFound) {
   void** search_result = dict_search(dct, &id);
   if (search_result) {
     return (neighbourData_t *)*search_result;
   } else {
-    locoId_t* key = pvPortMalloc(sizeof(locoId_t));
-    *key = id;
+    if (insertIfNotFound) {
+      locoId_t* key = pvPortMalloc(sizeof(locoId_t));
+      *key = id;
 
-    neighbourData_t* data = pvPortMalloc(sizeof(neighbourData_t));
-    data->localRx = 0;
-    data->remoteTx = 0;
-    data->clockCorrectionStorage.clockCorrection = 1;
-    data->clockCorrectionStorage.clockCorrectionBucket = 0;
+      neighbourData_t* data = pvPortMalloc(sizeof(neighbourData_t));
+      data->localRx = 0;
+      data->remoteTx = 0;
+      data->clockCorrectionStorage.clockCorrection = 1;
+      data->clockCorrectionStorage.clockCorrectionBucket = 0;
+      data->expectedSeqNr = 0;
+      data->position = (point_t){
+        .timestamp = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0
+      };
 
-    dict_insert_result insert_result = dict_insert(dct, key);
-    *insert_result.datum_ptr = data;
-    return data;
+      dict_insert_result insert_result = dict_insert(dct, key);
+      *insert_result.datum_ptr = data;
+      return data;
+    } else {
+      return NULL;
+    }
   }
 }
 
@@ -229,7 +246,7 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeq
     for (unsigned int i = 0; i < payloadLength; i++) {
       locoId_t destinationId = *(locoId_t*)dict_itor_key(itor);
       neighbourData_t* neighbourData = (neighbourData_t*)*dict_itor_datum(itor);
-      tofData_t* tofData = getTofDataBetween(tofDict, sourceId, destinationId);
+      tofData_t* tofData = getTofDataBetween(tofDict, sourceId, destinationId, true);
       payload_t pair = {
         .id = destinationId,
         .tx = neighbourData->remoteTx,
@@ -247,7 +264,7 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeq
 void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* neighboursDct, dict* tofDct) {
   // Get neighbour data
   locoId_t remoteId = rxPacket->header.sourceId;
-  neighbourData_t* neighbourData = getDataForNeighbour(neighboursDct, remoteId);
+  neighbourData_t* neighbourData = getDataForNeighbour(neighboursDct, remoteId, true);
 
   // Check sequence number
   uint8_t seqNr = rxPacket->header.seqNr;
@@ -306,7 +323,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       const uint32_t localReply = (uint32_t)(remoteReply * clockCorrection);
       const uint32_t localRound = (uint32_t)(localRx - localTx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
 
-      tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId);
+      tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, true);
       tofData->tof = (uint16_t)((localRound - localReply) / 2);
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
@@ -336,7 +353,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       debug.tof = tofData->tof;
 #endif
     } else {
-      tofData_t* tofData = getTofDataBetween(tofDct, remoteId, payload[i].id);
+      tofData_t* tofData = getTofDataBetween(tofDct, remoteId, payload[i].id, true);
       tofData->tof = (uint16_t)(payload[i].tof * clockCorrection);
     }
   }
@@ -352,4 +369,71 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   neighbourData->remoteTx = remoteTx;
   // Save the localRx, so we can calculate localReply when responding in the future
   neighbourData->localRx = localRx;
+
+  updatePositionOf(localId, remoteId, neighbourData, neighboursDct, tofDct);
+  updateOwnPosition(localId, remoteId, neighbourData, neighboursDct, tofDct);
+}
+
+void updatePositionOf(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, dict* tofDct) {
+  distanceMeasurement_t distances[8];
+  uint8_t distancesIndex = 0;
+
+  uint8_t neighbours = dict_count(neighboursDct);
+  dict_itor *itor = dict_itor_new(neighboursDct);
+  dict_itor_first(itor);
+  for (unsigned int i = 0; i < neighbours; i++) {
+    locoId_t neighbourId = *(locoId_t*)dict_itor_key(itor);
+
+    if (remoteId != neighbourId && neighbourId != localId) {
+      tofData_t* tofData = getTofDataBetween(tofDct, remoteId, neighbourId, false);
+
+      if (tofData != NULL) {
+        point_t* positionData = &((neighbourData_t*)*dict_itor_datum(itor))->position;
+
+        distanceMeasurement_t* distanceContainer = &distances[distancesIndex];
+        distanceContainer->x = positionData->x;
+        distanceContainer->y = positionData->y;
+        distanceContainer->z = positionData->z;
+        distanceContainer->distance = tofData->tof;
+
+        distancesIndex++;
+      }
+    }
+    dict_itor_next(itor);
+  }
+  dict_itor_free(itor);
+
+  // Distances are ready: set position
+  point_t* position = &neighbourData->position;
+  if(distancesIndex == 0) {
+    // Set the first discovered copter as the (0, 0, 0) point of the about-to-be-defined coordinate system
+    position->x = 0;
+    position->y = 0;
+    position->z = 0;
+  } else if(distancesIndex == 1) {
+    // Set the second discovered copter in the X axis, following the first copter position
+    if (position->x >= distances[0].x) {
+      position->x = distances[0].x + distances[0].distance;
+    } else {
+      position->x = distances[0].x - distances[0].distance;
+    }
+    position->y = distances[0].y;
+    position->z = distances[0].z;
+  }
+  // TODO: next cases
+}
+
+void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, dict* tofDct) {
+  point_t* remotePosition = &neighbourData->position;
+  tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, false);
+
+  if(tofData != NULL) {
+    distanceMeasurement_t dist;
+    dist.distance = tofData->tof;
+    dist.x = remotePosition->x;
+    dist.y = remotePosition->y;
+    dist.z = remotePosition->z;
+    dist.stdDev = 0.25;
+    estimatorKalmanEnqueueDistance(&dist);
+  }
 }
