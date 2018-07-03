@@ -18,12 +18,12 @@
 #include "tree_common.h"
 
 #include "unity.h"
+#include "freertosMocksImplementation.h"
 
 #include "mock_libdw1000.h"
 #include "mock_cfassert.h"
 #include "mock_estimator_kalman.h"
-
-#include "freertosMocks.h"
+#include "mock_freertosMocks.h"
 
 // Test helper functions
 
@@ -411,6 +411,9 @@ void testProcessRxPacketWithPayload() {
 
   // Mock kalman filter
   estimatorKalmanEnqueueDistance_IgnoreAndReturn(true);
+  // Mock tick count
+  uint32_t tickCount = 12345;
+  xTaskGetTickCount_IgnoreAndReturn(tickCount);
 
   // Test
   processRxPacket(NULL, localId, &rxPacket, neighboursDct, tofDct);
@@ -424,6 +427,10 @@ void testProcessRxPacketWithPayload() {
   TEST_ASSERT_EQUAL_UINT16(tof, currentTofData->tof); // It may be that -1 is required, because in the conversion between double and integer the system cuts the number down
   TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue
   TEST_ASSERT_EQUAL_UINT(0, currentNeighbourData->clockCorrectionStorage.clockCorrectionBucket);
+  TEST_ASSERT_EQUAL_UINT32(tickCount, currentNeighbourData->position.timestamp);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.x);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.y);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.z);
 }
 
 void testProcessRxPacketWithoutPayload() {
@@ -471,6 +478,10 @@ void testProcessRxPacketWithoutPayload() {
   rxPacket.header.tx = remoteTx;
   rxPacket.header.payloadLength = 0;
 
+  // Mock tick count
+  uint32_t tickCount = 12345;
+  xTaskGetTickCount_IgnoreAndReturn(tickCount);
+
   // Test
   processRxPacket(NULL, localId, &rxPacket, neighbourDct, tofDct);
 
@@ -480,4 +491,181 @@ void testProcessRxPacketWithoutPayload() {
   TEST_ASSERT_EQUAL_UINT64(localRx, currentNeighbourData->localRx);
   TEST_ASSERT_DOUBLE_WITHIN(10e-6, clockCorrection, currentNeighbourData->clockCorrectionStorage.clockCorrection); // Calculations make the clock have a slightly different value than the expected one. Using the whithin assertion mitigates this issue
   TEST_ASSERT_EQUAL_UINT8(expectedSeqNr + 1, currentNeighbourData->expectedSeqNr);
+  TEST_ASSERT_EQUAL_UINT32(tickCount, currentNeighbourData->position.timestamp);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.x);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.y);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.z);
+}
+
+void testupdatePositionOfFirstDrone() {
+  locoId_t remoteId = 5;
+  locoId_t localId = 6;
+  uint16_t tof = 12345;
+
+  // Mock tick count
+  uint32_t tickCount = 12345;
+  xTaskGetTickCount_IgnoreAndReturn(tickCount);
+
+  // Create the dictionaries
+  dict* neighbourDct = testCreateNeighboursDictionary();
+  dict* tofDct = testCreateTofDictionary();
+
+  // Set state as if the data from drone has been already processed
+  tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, true);
+  tofData->tof = tof;
+
+  // Get data object for drone
+  neighbourData_t* neighbourData = getDataForNeighbour(neighbourDct, remoteId, true);
+
+  // Test
+  updatePositionOf(localId, remoteId, neighbourData, neighbourDct, tofDct);
+
+  // Assert
+  neighbourData_t* currentNeighbourData = getDataForNeighbour(neighbourDct, remoteId, false);
+  TEST_ASSERT_EQUAL_UINT32(tickCount, currentNeighbourData->position.timestamp);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.x);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.y);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.z);
+}
+
+void testupdatePositionOfSecondDroneWhenDataNotReady() {
+  locoId_t remoteId1 = 5;
+  locoId_t remoteId2 = 6;
+  locoId_t localId = 7;
+  locoId_t remoteIdOther = 8;
+
+  uint16_t tofLocalToRemote1 = 12345;
+  uint16_t tofLocalToRemote2 = 23456;
+  uint16_t tofRemoteOtherToRemote2 = 34567;
+
+  // Mock tick count
+  uint32_t tickCount = 12345;
+  xTaskGetTickCount_IgnoreAndReturn(tickCount);
+
+  // Create the dictionaries
+  dict* neighbourDct = testCreateNeighboursDictionary();
+  dict* tofDct = testCreateTofDictionary();
+
+  // Set state as if the data from drone 1 has been already processed
+  {
+    neighbourData_t* neighbourData = getDataForNeighbour(neighbourDct, remoteId1, true);
+    neighbourData->position.timestamp = 123;
+    neighbourData->position.x = 0;
+    neighbourData->position.y = 0;
+    neighbourData->position.z = 0;
+
+    tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId1, true);
+    tofData->tof = tofLocalToRemote1;
+  }
+
+  // Set state as if the data from drone 2 has been already processed
+  {
+    tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId2, true);
+    tofData->tof = tofLocalToRemote2;
+  }
+  {
+    tofData_t* tofData = getTofDataBetween(tofDct, remoteId2, remoteIdOther, true);
+    tofData->tof = tofRemoteOtherToRemote2;
+  }
+
+  // Get data object for drone 2
+  neighbourData_t* neighbourData2 = getDataForNeighbour(neighbourDct, remoteId2, true);
+
+  // Test
+  updatePositionOf(localId, remoteId2, neighbourData2, neighbourDct, tofDct);
+
+  // Assert
+  neighbourData_t* currentNeighbourData = getDataForNeighbour(neighbourDct, remoteId2, false);
+  TEST_ASSERT_EQUAL_UINT32(0, currentNeighbourData->position.timestamp);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.x);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.y);
+  TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.z);
+}
+
+void testupdatePositionOfWith2Drones() {
+  locoId_t localId = 1;
+  locoId_t remoteId1 = 2;
+  locoId_t remoteId2 = 3;
+
+  // Mock tick count
+  uint32_t tickCount = 12345;
+  xTaskGetTickCount_IgnoreAndReturn(tickCount);
+
+  // Create the dictionaries
+  dict* neighbourDct = testCreateNeighboursDictionary();
+  dict* tofDct = testCreateTofDictionary();
+
+  {
+    locoId_t dutId = remoteId1;
+    uint16_t tofDutToLocal = 1;
+
+    {
+      // Set state as if the data from drone has been already processed
+      tofData_t* tofData = getTofDataBetween(tofDct, localId, dutId, true);
+      tofData->tof = tofDutToLocal;
+
+      // Get data object for drone
+      neighbourData_t* neighbourData = getDataForNeighbour(neighbourDct, dutId, true);
+
+      // Test
+      updatePositionOf(localId, remoteId1, neighbourData, neighbourDct, tofDct);
+    }
+
+    // Assert
+    neighbourData_t* dutData = getDataForNeighbour(neighbourDct, dutId, false);
+
+    TEST_ASSERT_EQUAL_UINT32(tickCount, dutData->position.timestamp);
+    TEST_ASSERT_EQUAL_FLOAT(0, dutData->position.x);
+    TEST_ASSERT_EQUAL_FLOAT(0, dutData->position.y);
+    TEST_ASSERT_EQUAL_FLOAT(0, dutData->position.z);
+  }
+
+  locoId_t dutId = remoteId2;
+  locoId_t remoteId = remoteId1;
+
+  for (unsigned int i = 0; i < 10; i++) {
+    uint16_t tofDutToLocal = i * 2;
+    uint16_t tofDutToRemote = i * 2 + 1;
+
+    {
+      // Set state as if the data from drone has been already processed
+      {
+        tofData_t* tofData = getTofDataBetween(tofDct, dutId, localId, true);
+        tofData->tof = tofDutToLocal;
+      }
+      {
+        tofData_t* tofData = getTofDataBetween(tofDct, dutId, remoteId, true);
+        tofData->tof = tofDutToRemote;
+      }
+
+      // Get data object for drone
+      neighbourData_t* dutData = getDataForNeighbour(neighbourDct, dutId, true);
+
+      // Test
+      updatePositionOf(localId, dutId, dutData, neighbourDct, tofDct);
+    }
+
+    // Assert
+    neighbourData_t* dutData = getDataForNeighbour(neighbourDct, dutId, false);
+    neighbourData_t* remoteData = getDataForNeighbour(neighbourDct, remoteId, false);
+    float expectedXPosition = remoteData->position.x;
+    if(dutId > remoteId) {
+      expectedXPosition += (float)tofDutToRemote;
+    } else {
+      expectedXPosition -= (float)tofDutToRemote;
+    }
+
+    TEST_ASSERT_EQUAL_UINT32(tickCount, dutData->position.timestamp);
+    TEST_ASSERT_EQUAL_FLOAT(expectedXPosition, dutData->position.x);
+    TEST_ASSERT_EQUAL_FLOAT(0, dutData->position.y);
+    TEST_ASSERT_EQUAL_FLOAT(0, dutData->position.z);
+
+    printf("Data from drone %02d arrived | X position: %03g | tof to remote drone: %03d\n", dutId, dutData->position.x, tofDutToRemote);
+
+    // Prepare for next iteration
+    locoId_t oldDutId = dutId;
+    locoId_t oldRemoteId = remoteId;
+    dutId = oldRemoteId;
+    remoteId = oldDutId;
+  }
 }

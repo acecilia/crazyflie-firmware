@@ -405,12 +405,13 @@ void updatePositionOf(locoId_t localId, locoId_t remoteId, neighbourData_t* neig
 
   // Distances are ready: set position
   point_t* position = &neighbourData->position;
-  if(distancesIndex == 0) {
+  if(neighbours == 1 && distancesIndex == 0) {
     // Set the first discovered copter as the (0, 0, 0) point of the about-to-be-defined coordinate system
     position->x = 0;
     position->y = 0;
     position->z = 0;
-  } else if(distancesIndex == 1) {
+    position->timestamp = xTaskGetTickCount();
+  } else if(neighbours == 2 && distancesIndex == 1) {
     // Set the second discovered copter in the X axis, following the first copter position
     if (position->x >= distances[0].x) {
       position->x = distances[0].x + distances[0].distance;
@@ -419,21 +420,27 @@ void updatePositionOf(locoId_t localId, locoId_t remoteId, neighbourData_t* neig
     }
     position->y = distances[0].y;
     position->z = distances[0].z;
+    position->timestamp = xTaskGetTickCount();
   }
   // TODO: next cases
 }
 
 void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, dict* tofDct) {
   point_t* remotePosition = &neighbourData->position;
-  tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, false);
 
-  if(tofData != NULL) {
-    distanceMeasurement_t dist;
-    dist.distance = tofData->tof;
-    dist.x = remotePosition->x;
-    dist.y = remotePosition->y;
-    dist.z = remotePosition->z;
-    dist.stdDev = 0.25;
-    estimatorKalmanEnqueueDistance(&dist);
+  // The position is known
+  if(remotePosition->timestamp != 0) {
+    tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, false);
+
+    // The tof information was previously calculated yet
+    if(tofData != NULL) {
+      distanceMeasurement_t dist;
+      dist.distance = tofData->tof;
+      dist.x = remotePosition->x;
+      dist.y = remotePosition->y;
+      dist.z = remotePosition->z;
+      dist.stdDev = 0.25;
+      estimatorKalmanEnqueueDistance(&dist);
+    }
   }
 }

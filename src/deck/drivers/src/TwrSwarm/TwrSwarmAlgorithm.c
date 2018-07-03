@@ -39,7 +39,7 @@ static void setupRx(dwDevice_t *dev) {
   dwStartReceive(dev);
 }
 
-uint32_t now() {
+static uint32_t now() {
   return xTaskGetTickCount();
 }
 
