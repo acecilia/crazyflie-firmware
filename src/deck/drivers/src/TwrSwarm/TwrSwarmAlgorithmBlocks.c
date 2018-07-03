@@ -4,6 +4,7 @@
 #include "limits.h"
 #include "stabilizer_types.h"
 #include "estimator_kalman.h"
+#include "task.h"
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
