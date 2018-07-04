@@ -10,6 +10,13 @@ static void blink(led_t led);
 static void init();
 
 debug_t debug = {
+  .position = {
+    .timestamp = 0,
+    .x = 0,
+    .y = 0,
+    .z = 0
+  },
+
   .localRx = 100,
   .localTx = 200,
   .remoteRx = 300,
@@ -103,6 +110,10 @@ static void init() {
 }
 
 LOG_GROUP_START(twrSwarm)
+LOG_ADD(LOG_FLOAT, xPosition, &debug.position.x)
+LOG_ADD(LOG_FLOAT, yPosition, &debug.position.y)
+LOG_ADD(LOG_FLOAT, zPosition, &debug.position.z)
+
 LOG_ADD(LOG_FLOAT, localRx, &debug.localRx)
 LOG_ADD(LOG_FLOAT, localTx, &debug.localTx)
 LOG_ADD(LOG_FLOAT, remoteRx, &debug.localRx)

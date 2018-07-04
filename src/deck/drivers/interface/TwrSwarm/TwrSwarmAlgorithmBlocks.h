@@ -18,6 +18,6 @@ neighbourData_t* getDataForNeighbour(dict* dct, const locoId_t id, const bool in
 unsigned int calculatePacketSize(lpsSwarmPacket_t* packet);
 void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeqNr, dict* neighbourDct, dict* tofDict);
 void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* neighboursDct, dict* tofDct);
-void updatePositionOf(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, dict* tofDct);
+void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, dict* tofDct);
 void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, dict* tofDct);
 #endif /* TwrSwarmAlgorithmBlocks_h */

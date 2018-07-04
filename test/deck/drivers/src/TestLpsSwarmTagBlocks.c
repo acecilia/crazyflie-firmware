@@ -87,6 +87,21 @@ void setUp(void) {
 void tearDown(void) {
 }
 
+void testGetHashFromIds() {
+  // Fixture
+  locoId_t id1 = 0xCD;
+  locoId_t id2 = 0xAB;
+
+  // Test
+  locoIdx2_t result1 = getHashFromIds(id1, id2);
+  locoIdx2_t result2 = getHashFromIds(id2, id1);
+
+  // Assert
+  locoIdx2_t expectedResult = 0xCDAB;
+  TEST_ASSERT_EQUAL_UINT16(expectedResult, result1);
+  TEST_ASSERT_EQUAL_UINT16(expectedResult, result2);
+}
+
 /**
  Adjust the bit size of the number
  */
@@ -499,7 +514,7 @@ void testProcessRxPacketWithoutPayload() {
 
 void testupdatePositionOfFirstDrone() {
   locoId_t remoteId = 5;
-  locoId_t localId = 6;
+  locoId_t dutId = 6;
   uint16_t tof = 12345;
 
   // Mock tick count
@@ -511,14 +526,14 @@ void testupdatePositionOfFirstDrone() {
   dict* tofDct = testCreateTofDictionary();
 
   // Set state as if the data from drone has been already processed
-  tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, true);
+  tofData_t* tofData = getTofDataBetween(tofDct, dutId, remoteId, true);
   tofData->tof = tof;
 
   // Get data object for drone
   neighbourData_t* neighbourData = getDataForNeighbour(neighbourDct, remoteId, true);
 
   // Test
-  updatePositionOf(localId, remoteId, neighbourData, neighbourDct, tofDct);
+  updatePositionOf(remoteId, neighbourData, neighbourDct, tofDct);
 
   // Assert
   neighbourData_t* currentNeighbourData = getDataForNeighbour(neighbourDct, remoteId, false);
@@ -572,7 +587,7 @@ void testupdatePositionOfSecondDroneWhenDataNotReady() {
   neighbourData_t* neighbourData2 = getDataForNeighbour(neighbourDct, remoteId2, true);
 
   // Test
-  updatePositionOf(localId, remoteId2, neighbourData2, neighbourDct, tofDct);
+  updatePositionOf(remoteId2, neighbourData2, neighbourDct, tofDct);
 
   // Assert
   neighbourData_t* currentNeighbourData = getDataForNeighbour(neighbourDct, remoteId2, false);
@@ -608,7 +623,7 @@ void testupdatePositionOfWith2Drones() {
       neighbourData_t* neighbourData = getDataForNeighbour(neighbourDct, dutId, true);
 
       // Test
-      updatePositionOf(localId, remoteId1, neighbourData, neighbourDct, tofDct);
+      updatePositionOf(remoteId1, neighbourData, neighbourDct, tofDct);
     }
 
     // Assert
@@ -642,7 +657,7 @@ void testupdatePositionOfWith2Drones() {
       neighbourData_t* dutData = getDataForNeighbour(neighbourDct, dutId, true);
 
       // Test
-      updatePositionOf(localId, dutId, dutData, neighbourDct, tofDct);
+      updatePositionOf(dutId, dutData, neighbourDct, tofDct);
     }
 
     // Assert

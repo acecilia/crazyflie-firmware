@@ -3,8 +3,11 @@
 
 #include <stdint.h>
 #include "led.h"
+#include "stabilizer_types.h"
 
 typedef struct {
+  point_t position;
+
   float localRx;
   float localTx;
   float remoteRx;
