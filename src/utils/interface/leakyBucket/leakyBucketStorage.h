@@ -10,7 +10,6 @@
 typedef struct {
   unsigned int capacity;
   unsigned int maximumCapacity;
-  bool bucketisEmpty;
 } leakyBucketStorage_t;
 
 #endif /* leakyBucketStorage_h */

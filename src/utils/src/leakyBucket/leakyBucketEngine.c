@@ -3,7 +3,6 @@
 static void init(leakyBucketStorage_t* storage, unsigned int maximumCapacity) {
   storage->capacity = 0;
   storage->maximumCapacity = maximumCapacity;
-  storage->bucketisEmpty = true;
 }
 
 static void fillBucket(leakyBucketStorage_t* storage) {
