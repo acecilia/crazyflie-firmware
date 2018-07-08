@@ -33,6 +33,7 @@ debug_t debug = {
   .clockAcceptanceRate = 0,
 
   .tof = 4000,
+  .distance = 4100,
 
   .dctCount = 5000,
 
@@ -128,6 +129,7 @@ LOG_ADD(LOG_UINT32, ckCorrCandidate, &debug.clockCorrectionCandidate)
 LOG_ADD(LOG_UINT32, clockAcceptance, &debug.clockAcceptanceRate)
 
 LOG_ADD(LOG_UINT32, tof, &debug.tof)
+LOG_ADD(LOG_FLOAT, distance, &debug.distance)
 
 LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
 

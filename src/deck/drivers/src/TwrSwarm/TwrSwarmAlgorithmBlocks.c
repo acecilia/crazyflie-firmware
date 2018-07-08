@@ -10,8 +10,11 @@
 #include "TwrSwarmDebug.h"
 #endif
 
-// TODO: remove and to it smarter
-#define ANTENNA_DELAY (uint16_t)( (154.6 *499.2e6 * 128) / 299792458.0 )
+// TODO: remove and do it smarter
+#define ANTENNA_OFFSET_METERS 154.6
+#define ANTENNA_DELAY (uint16_t)((ANTENNA_OFFSET_METERS * LOCODECK_TS_FREQ) / SPEED_OF_LIGHT)
+#define ANTENNA_ACCEPTED_NOISE_ERROR 100
+uint16_t antennaDelay = ANTENNA_DELAY;
 
 // #pragma GCC diagnostic warning "-Wconversion"
 
@@ -50,13 +53,19 @@ static uint32_t ticksPerSecond = M2T(1000);
 /**********************************/
 
 /**
+ Calculate the distance associated with a tof
+ */
+float calculateDistance(const uint16_t tof) {
+  return SPEED_OF_LIGHT * (tof / LOCODECK_TS_FREQ);
+}
+
+/**
  Verify if a packed sequence number is valid
  */
 bool verifySeqNr(const uint8_t seqNr, const uint8_t expectedSeqNr) {
   // If the sequence number was from 0 to 5 units less than the expectedSeqNr, we consider that packet a delayed reflexion
   return ((uint8_t)(seqNr - expectedSeqNr)) <= UCHAR_MAX - 5;
 }
-
 
 /**
  Calculates a unique id from two loco ids
@@ -327,19 +336,24 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       const uint32_t localReply = (uint32_t)(remoteReply * clockCorrection);
       const uint32_t localRound = (uint32_t)(localRx - localTx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
 
-      tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, true);
+      // TODO: see how can we reduce the error for antenna delay calculation
+      // Calculate tof
+      uint16_t tofWithAntennaDelay = (uint16_t)((localRound - localReply) / 2);
+      if(tofWithAntennaDelay > (ANTENNA_DELAY - ANTENNA_ACCEPTED_NOISE_ERROR) && antennaDelay > tofWithAntennaDelay) {
+        // antennaDelay = tofWithAntennaDelay;
+      }
+      uint16_t tof = tofWithAntennaDelay - antennaDelay;
 
-      // TODO: remove this and filter tof properly
-      uint16_t rawTof = (uint16_t)((localRound - localReply) / 2) - ANTENNA_DELAY + 1000;
-      if(500 < rawTof && rawTof < 3000) {
-        tofData->tof = rawTof;
+      // Store tof
+      tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, true);
+      if(tof < 2000) {
+        tofData->tof = tof;
       }
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       if (localReply > localRound) {
         debug.measurementFailure++;
 
-        debug.localRx = localRx;
         debug.localTx = localTx;
         debug.remoteRx = remoteRx;
         debug.remoteTx = remoteTx;
@@ -360,6 +374,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       debug.remoteReply = remoteReply;
 
       debug.tof = tofData->tof;
+      debug.distance = calculateDistance(tofData->tof);
 #endif
     } else {
       tofData_t* tofData = getTofDataBetween(tofDct, remoteId, payload[i].id, true);
@@ -380,10 +395,18 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   neighbourData->localRx = localRx;
 
   updatePositionOf(remoteId, neighbourData, neighboursDct, tofDct);
-  // updateOwnPosition(localId, remoteId, neighbourData, neighboursDct, tofDct);
+  updateOwnPosition(localId, remoteId, neighbourData, neighboursDct, tofDct);
+
+  // HACK for simulating 2D
+  tofMeasurement_t tofData;
+  tofData.timestamp = xTaskGetTickCount();
+  tofData.distance = 0;
+  tofData.stdDev = 0;
+  estimatorKalmanEnqueueTOF(&tofData);
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-  debug.position = neighbourData->position;
+  debug.localRx = neighbourData->position.x;
+  estimatorKalmanGetEstimatedPos(&debug.position);
 #endif
 }
 
@@ -407,7 +430,7 @@ void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* n
           distances[distancesIndex].x = positionData->x;
           distances[distancesIndex].y = positionData->y;
           distances[distancesIndex].z = positionData->z;
-          distances[distancesIndex].distance = SPEED_OF_LIGHT * (tofData->tof / LOCODECK_TS_FREQ);
+          distances[distancesIndex].distance = calculateDistance(tofData->tof);
           distancesIndex++;
         }
       }
@@ -424,12 +447,26 @@ void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* n
     neighbourData->position.z = 0;
     neighbourData->position.timestamp = xTaskGetTickCount();
   } else if(neighbours == 2 && distancesIndex == 1) {
+    // TODO: see how to avoid coordinate system shifting
+    float xPositionCandidate;
     // Set the second discovered copter in the X axis, following the first copter position
     if (neighbourData->position.x >= distances[0].x) {
-      neighbourData->position.x = distances[0].x + distances[0].distance;
+      xPositionCandidate = distances[0].x + distances[0].distance;
     } else {
-      neighbourData->position.x = distances[0].x - distances[0].distance;
+      xPositionCandidate = distances[0].x - distances[0].distance;
     }
+
+    float xPositionDiff;
+    if(xPositionCandidate >= neighbourData->position.x) {
+      xPositionDiff = xPositionCandidate - neighbourData->position.x;
+    } else {
+      xPositionDiff = neighbourData->position.x - xPositionCandidate;
+    }
+
+    if (xPositionDiff > 0.1f) {
+      neighbourData->position.x = xPositionCandidate;
+    }
+
     neighbourData->position.y = distances[0].y;
     neighbourData->position.z = distances[0].z;
     neighbourData->position.timestamp = xTaskGetTickCount();
@@ -447,7 +484,7 @@ void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* nei
     // The tof information was previously calculated
     if(tofData != NULL) {
       distanceMeasurement_t dist;
-      dist.distance = SPEED_OF_LIGHT * (tofData->tof / LOCODECK_TS_FREQ);
+      dist.distance = calculateDistance(tofData->tof);
       dist.x = remotePosition->x;
       dist.y = remotePosition->y;
       dist.z = remotePosition->z;

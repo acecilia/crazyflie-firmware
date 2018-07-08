@@ -24,6 +24,7 @@ typedef struct {
   uint32_t clockAcceptanceRate;
 
   uint32_t tof;
+  float distance;
 
   uint32_t dctCount;
 
