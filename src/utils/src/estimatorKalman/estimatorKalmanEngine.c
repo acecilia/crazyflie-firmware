@@ -505,7 +505,7 @@ static void update(estimatorKalmanStorage_t* storage, state_t *state, const uint
   stateEstimatorAssertNotNaN();
 }
 
-static bool enqueueMeasurement(xQueueHandle queue, void* measurement) {
+static bool enqueueMeasurement(xQueueHandle queue, const void* measurement) {
   portBASE_TYPE result;
   bool isInInterrupt = (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
 
@@ -521,17 +521,17 @@ static bool enqueueMeasurement(xQueueHandle queue, void* measurement) {
   return (result == pdTRUE);
 }
 
-static bool enqueueDistance(estimatorKalmanStorage_t* storage, distanceMeasurement_t *distance) {
+static bool enqueueDistance(estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance) {
   ASSERT(storage->isInit);
   return enqueueMeasurement(storage->distDataQueue, (void *)distance);
 }
 
-static bool enqueuePosition(estimatorKalmanStorage_t* storage, positionMeasurement_t *position) {
+static bool enqueuePosition(estimatorKalmanStorage_t* storage, const positionMeasurement_t* position) {
   ASSERT(storage->isInit);
   return enqueueMeasurement(storage->posDataQueue, (void *)position);
 }
 
-static point_t getPosition(estimatorKalmanStorage_t* storage) {
+static point_t getPosition(const estimatorKalmanStorage_t* storage) {
   point_t pos = {
     .x = storage->S[STATE_X],
     .y = storage->S[STATE_Y],
