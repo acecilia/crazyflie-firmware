@@ -501,7 +501,9 @@ static void update(estimatorKalmanStorage_t* storage, state_t *state, const uint
    * Finally, the internal state is externalized.
    * This is done every round, since the external state includes some sensor data
    */
-  externalizeState(storage, state, osTick);
+  if(state != NULL) { // Allow to pass NULL to the state if we do not need it
+    externalizeState(storage, state, osTick);
+  }
   stateEstimatorAssertNotNaN();
 }
 
