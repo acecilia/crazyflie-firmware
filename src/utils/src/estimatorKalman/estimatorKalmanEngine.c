@@ -17,21 +17,21 @@
  *
  * The filter progresses as:
  *  - Predicting the current state forward */
-// static void predict(kalmanStorage_t* storage, float thrust, Axis3f *acc, Axis3f *gyro, float dt);
-// static void addProcessNoise(kalmanStorage_t* storage, float dt);
+// static void predict(estimatorKalmanStorage_t* storage, float thrust, Axis3f *acc, Axis3f *gyro, float dt);
+// static void addProcessNoise(estimatorKalmanStorage_t* storage, float dt);
 
 /*  - Measurement updates based on sensors */
-// static void scalarUpdate(kalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise);
+// static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise);
 // static void stateEstimatorUpdateWithAccOnGround(Axis3f *acc);
 // #ifdef KALMAN_USE_BARO_UPDATE
 // static void stateEstimatorUpdateWithBaro(baro_t *baro);
 // #endif
 
 /*  - Finalization to incorporate attitude error into body attitude */
-// static void finalize(kalmanStorage_t* storage, sensorData_t *sensors, uint32_t tick);
+// static void finalize(estimatorKalmanStorage_t* storage, sensorData_t *sensors, uint32_t tick);
 
 /*  - Externalization to move the filter's internal state into the external state expected by other modules */
-// static void stateEstimatorExternalizeState(kalmanStorage_t* storage, state_t *state, sensorData_t *sensors, uint32_t tick);
+// static void stateEstimatorExternalizeState(estimatorKalmanStorage_t* storage, state_t *state, sensorData_t *sensors, uint32_t tick);
 
 /**
  * Constants
@@ -69,11 +69,11 @@ static const float initialZ = 0.0;
 #define POS_QUEUE_LENGTH (10)
 #define DIST_QUEUE_LENGTH (10)
 
-static inline bool hasDistanceMeasurement(kalmanStorage_t* storage, distanceMeasurement_t *dist) {
+static inline bool hasDistanceMeasurement(estimatorKalmanStorage_t* storage, distanceMeasurement_t *dist) {
   return (pdTRUE == xQueueReceive(storage->distDataQueue, dist, 0));
 }
 
-static inline bool hasPositionMeasurement(kalmanStorage_t* storage, positionMeasurement_t *pos) {
+static inline bool hasPositionMeasurement(estimatorKalmanStorage_t* storage, positionMeasurement_t *pos) {
   return (pdTRUE == xQueueReceive(storage->posDataQueue, pos, 0));
 }
 
@@ -107,7 +107,7 @@ static void stateEstimatorAssertNotNaN() {
 #ifdef KALMAN_DECOUPLE_XY
 // Reset a state to 0 with max covariance
 // If called often, this decouples the state to the rest of the filter
-static void decoupleState(kalmanStorage_t* storage, stateIdx_t state) {
+static void decoupleState(estimatorKalmanStorage_t* storage, stateIdx_t state) {
   // Set all covariance to 0
   for(int i=0; i<STATE_DIM; i++) {
     storage->P[state][i] = 0;
@@ -124,7 +124,7 @@ static void decoupleState(kalmanStorage_t* storage, stateIdx_t state) {
  * Main Kalman Filter functions
  */
 
-static void init(kalmanStorage_t* storage) {
+static void init(estimatorKalmanStorage_t* storage) {
   // Reset the queues
   if (!storage->isInit) {
     storage->posDataQueue = xQueueCreate(POS_QUEUE_LENGTH, sizeof(positionMeasurement_t));
@@ -199,7 +199,7 @@ static void init(kalmanStorage_t* storage) {
   storage->isInit = true;
 }
 
-static void scalarUpdate(kalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise) {
+static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise) {
   configASSERT(Hm->numRows == 1);
   configASSERT(Hm->numCols == STATE_DIM);
 
@@ -250,7 +250,7 @@ static void scalarUpdate(kalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, 
   stateEstimatorAssertNotNaN();
 }
 
-static void updateWithPosition(kalmanStorage_t* storage, positionMeasurement_t *xyz) {
+static void updateWithPosition(estimatorKalmanStorage_t* storage, positionMeasurement_t *xyz) {
   // a direct measurement of states x, y, and z
   // do a scalar update for each state, since this should be faster than updating all together
   for (int i=0; i<3; i++) {
@@ -263,7 +263,7 @@ static void updateWithPosition(kalmanStorage_t* storage, positionMeasurement_t *
   }
 }
 
-static void updateWithDistance(kalmanStorage_t* storage, distanceMeasurement_t *d)
+static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasurement_t *d)
 {
   // a measurement of distance to point (x, y, z)
   float h[STATE_DIM] = {0};
@@ -284,7 +284,7 @@ static void updateWithDistance(kalmanStorage_t* storage, distanceMeasurement_t *
   scalarUpdate(storage, &H, measuredDistance-predictedDistance, d->stdDev);
 }
 
-static void finalize(kalmanStorage_t* storage, uint32_t tick) {
+static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
   // Incorporate the attitude error (Kalman filter state) with the attitude
   float v0 = storage->S[STATE_D0];
   float v1 = storage->S[STATE_D1];
@@ -401,7 +401,7 @@ static void finalize(kalmanStorage_t* storage, uint32_t tick) {
   stateEstimatorAssertNotNaN();
 }
 
-static void externalizeState(kalmanStorage_t* storage, state_t *state, uint32_t tick) {
+static void externalizeState(estimatorKalmanStorage_t* storage, state_t *state, uint32_t tick) {
   // position state is already in world frame
   state->position = (point_t){
     .timestamp = tick,
@@ -442,7 +442,7 @@ static void externalizeState(kalmanStorage_t* storage, state_t *state, uint32_t 
   };
 }
 
-static void update(kalmanStorage_t* storage, state_t *state, const uint32_t tick) {
+static void update(estimatorKalmanStorage_t* storage, state_t *state, const uint32_t tick) {
   // If the client (via a parameter update) triggers an estimator reset:
   if (storage->resetEstimation) {
     init(storage);
@@ -521,17 +521,17 @@ static bool enqueueMeasurement(xQueueHandle queue, void* measurement) {
   return (result == pdTRUE);
 }
 
-static bool enqueueDistance(kalmanStorage_t* storage, distanceMeasurement_t *distance) {
+static bool enqueueDistance(estimatorKalmanStorage_t* storage, distanceMeasurement_t *distance) {
   ASSERT(storage->isInit);
   return enqueueMeasurement(storage->distDataQueue, (void *)distance);
 }
 
-static bool enqueuePosition(kalmanStorage_t* storage, positionMeasurement_t *position) {
+static bool enqueuePosition(estimatorKalmanStorage_t* storage, positionMeasurement_t *position) {
   ASSERT(storage->isInit);
   return enqueueMeasurement(storage->posDataQueue, (void *)position);
 }
 
-static point_t getPosition(kalmanStorage_t* storage) {
+static point_t getPosition(estimatorKalmanStorage_t* storage) {
   point_t pos = {
     .x = storage->S[STATE_X],
     .y = storage->S[STATE_Y],

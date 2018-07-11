@@ -75,6 +75,6 @@ typedef struct {
 
   float PHTd[STATE_DIM * 1];
   arm_matrix_instance_f32 PHTm;
-} kalmanStorage_t;
+} estimatorKalmanStorage_t;
 
 #endif /* estimatorKalmanStorage_h */
