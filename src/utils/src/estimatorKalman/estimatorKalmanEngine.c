@@ -11,28 +11,6 @@
 #include "math.h"
 #include "arm_math.h"
 
-
-/**
- * Primary Kalman filter functions
- *
- * The filter progresses as:
- *  - Predicting the current state forward */
-// static void predict(estimatorKalmanStorage_t* storage, float thrust, Axis3f *acc, Axis3f *gyro, float dt);
-// static void addProcessNoise(estimatorKalmanStorage_t* storage, float dt);
-
-/*  - Measurement updates based on sensors */
-// static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise);
-// static void stateEstimatorUpdateWithAccOnGround(Axis3f *acc);
-// #ifdef KALMAN_USE_BARO_UPDATE
-// static void stateEstimatorUpdateWithBaro(baro_t *baro);
-// #endif
-
-/*  - Finalization to incorporate attitude error into body attitude */
-// static void finalize(estimatorKalmanStorage_t* storage, sensorData_t *sensors, uint32_t tick);
-
-/*  - Externalization to move the filter's internal state into the external state expected by other modules */
-// static void stateEstimatorExternalizeState(estimatorKalmanStorage_t* storage, state_t *state, sensorData_t *sensors, uint32_t tick);
-
 /**
  * Constants
  */
@@ -100,10 +78,36 @@ static inline float arm_sqrt(float32_t in) {
 /*
  * Other functions
  */
-static void stateEstimatorAssertNotNaN() {
+#define KALMAN_NAN_CHECK
+#ifdef KALMAN_NAN_CHECK
+static void stateEstimatorAssertNotNaN(estimatorKalmanStorage_t* storage) {
+  for(int i = 0; i < STATE_DIM; i++) {
+    if (isnan(storage->S[i])) {
+      configASSERT(false);
+    }
+  }
+
+  for(int i = 0; i < 3; i++) {
+    if (isnan(storage->q[i])) {
+      configASSERT(false);
+    }
+  }
+
+  for(int i = 0; i < STATE_DIM; i++) {
+    for(int j = 0; j < STATE_DIM; j++) {
+      if (isnan(storage->P[i][j])) {
+        configASSERT(false);
+      }
+    }
+  }
+}
+#else
+static void stateEstimatorAssertNotNaN(estimatorKalmanStorage_t* storage) {
   return;
 }
+#endif
 
+// #define KALMAN_DECOUPLE_XY
 #ifdef KALMAN_DECOUPLE_XY
 // Reset a state to 0 with max covariance
 // If called often, this decouples the state to the rest of the filter
@@ -134,12 +138,7 @@ static void init(estimatorKalmanStorage_t* storage) {
     xQueueReset(storage->distDataQueue);
   }
 
-  /*
-   storage->lastPrediction = xTaskGetTickCount();
-   storage->lastPNUpdate = xTaskGetTickCount();
-   */
-
-  // Reset the state
+  // Initialize the state
   // TODO: Can we initialize this more intelligently?
   storage->S[STATE_X] = initialX;
   storage->S[STATE_Y] = initialY;
@@ -151,28 +150,26 @@ static void init(estimatorKalmanStorage_t* storage) {
   storage->S[STATE_D1] = 0;
   storage->S[STATE_D2] = 0;
 
-  // reset the attitude quaternion
+  // Initialize the attitude quaternion
   for(int i=0; i<3; i++) {
     storage->q[i] = i == 0 ? 1 : 0;
   }
 
-  // then set the initial rotation matrix to the identity. This only affects
-  // the first prediction step, since in the finalization, after shifting
-  // attitude errors into the attitude state, the rotation matrix is updated.
-  for(int i=0; i<3; i++) {
-    for(int j=0; j<3; j++) {
+  // Set the initial rotation matrix to the identity. This only affects the first prediction step, since in the finalization, after shifting attitude errors into the attitude state, the rotation matrix is updated.
+  for(int i = 0; i < 3; i++) {
+    for(int j = 0; j < 3; j++) {
       storage->R[i][j] = i==j ? 1 : 0;
     }
   }
 
-  // Reset covariance matrix
-  for (int i=0; i< STATE_DIM; i++) {
-    for (int j=0; j < STATE_DIM; j++) {
+  // Reset covariance storage
+  for (int i = 0; i < STATE_DIM; i++) {
+    for (int j = 0; j < STATE_DIM; j++) {
       storage->P[i][j] = 0; // set covariances to zero (diagonals will be changed from zero in the next section)
     }
   }
 
-  // initialize state variances
+  // Initialize state variances
   storage->P[STATE_X][STATE_X] = powf(stdDevInitialPosition_xy, 2);
   storage->P[STATE_Y][STATE_Y] = powf(stdDevInitialPosition_xy, 2);
   storage->P[STATE_Z][STATE_Z] = powf(stdDevInitialPosition_z, 2);
@@ -185,6 +182,7 @@ static void init(estimatorKalmanStorage_t* storage) {
   storage->P[STATE_D1][STATE_D1] = powf(stdDevInitialAttitude_rollpitch, 2);
   storage->P[STATE_D2][STATE_D2] = powf(stdDevInitialAttitude_yaw, 2);
 
+  // Initialize covariance matrix
   storage->Pm = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->P };
 
   storage->isInit = true;
@@ -192,7 +190,7 @@ static void init(estimatorKalmanStorage_t* storage) {
 
 static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise) {
   /*****************************************/
-  // Temporary matrices used for calculations. Declared static because it is the only way: the stack is too small for storing them
+  // Temporary matrices used for calculations. Declared static for better usage of the memory (if not static, the stack may be too small for storing them, and stack overflow may occur)
   /*****************************************/
 
   // The Kalman gain as a column vector
@@ -237,7 +235,7 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
     K[i] = PHTd[i]/HPHR; // kalman gain = (PH' (HPH' + R )^-1)
     storage->S[i] = storage->S[i] + K[i] * error; // state update
   }
-  stateEstimatorAssertNotNaN();
+  stateEstimatorAssertNotNaN(storage);
 
   // ====== COVARIANCE UPDATE ======
   mat_mult(&Km, Hm, &tmpNN1m); // KH
@@ -247,7 +245,8 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
   mat_trans(&tmpNN1m, &tmpNN2m); // (KH - I)'
   mat_mult(&tmpNN1m, &storage->Pm, &tmpNN3m); // (KH - I)*P
   mat_mult(&tmpNN3m, &tmpNN2m, &storage->Pm); // (KH - I)*P*(KH - I)'
-  stateEstimatorAssertNotNaN();
+  stateEstimatorAssertNotNaN(storage);
+
   // add the measurement variance and ensure boundedness and symmetry
   // TODO: Why would it hit these bounds? Needs to be investigated.
   for (int i=0; i<STATE_DIM; i++) {
@@ -264,7 +263,7 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
     }
   }
 
-  stateEstimatorAssertNotNaN();
+  stateEstimatorAssertNotNaN(storage);
 }
 
 static void updateWithPosition(estimatorKalmanStorage_t* storage, positionMeasurement_t *xyz) {
@@ -303,7 +302,7 @@ static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasur
 
 static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
   /*****************************************/
-  // Temporary matrices used for calculations. Declared static because it is the only way: the stack is too small for storing them
+  // Temporary matrices used for calculations. Declared static for better usage of the memory (if not static, the stack may be too small for storing them, and stack overflow may occur)
   /*****************************************/
 
   // Matrix to rotate the attitude covariances once updated
@@ -431,10 +430,12 @@ static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
     }
   }
 
-  stateEstimatorAssertNotNaN();
+  stateEstimatorAssertNotNaN(storage);
 }
 
-static void externalizeState(estimatorKalmanStorage_t* storage, state_t *state, uint32_t tick) {
+static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
+  uint32_t tick = xTaskGetTickCount();
+
   // position state is already in world frame
   state->position = (point_t){
     .timestamp = tick,
@@ -475,7 +476,7 @@ static void externalizeState(estimatorKalmanStorage_t* storage, state_t *state, 
   };
 }
 
-static void update(estimatorKalmanStorage_t* storage, state_t *state, const uint32_t tick) {
+static void update(estimatorKalmanStorage_t* storage) {
   // If the client (via a parameter update) triggers an estimator reset:
   if (storage->resetEstimation) {
     init(storage);
@@ -484,7 +485,7 @@ static void update(estimatorKalmanStorage_t* storage, state_t *state, const uint
 
   // Tracks whether an update to the state has been made, and the state therefore requires finalization
   bool doneUpdate = false;
-  uint32_t osTick = xTaskGetTickCount(); // would be nice if this had a precision higher than 1ms...
+  uint32_t tick = xTaskGetTickCount(); // would be nice if this had a precision higher than 1ms...
 
 #ifdef KALMAN_DECOUPLE_XY
   // Decouple position states
@@ -524,20 +525,12 @@ static void update(estimatorKalmanStorage_t* storage, state_t *state, const uint
    * - the body attitude is converted into a rotation matrix for the next prediction, and
    * - correctness of the covariance matrix is ensured
    */
-
   if (doneUpdate) {
-    finalize(storage, osTick);
-    stateEstimatorAssertNotNaN();
+    finalize(storage, tick);
+    stateEstimatorAssertNotNaN(storage);
   }
 
-  /**
-   * Finally, the internal state is externalized.
-   * This is done every round, since the external state includes some sensor data
-   */
-  if(state != NULL) { // Allow to pass NULL to the state if we do not need it
-    externalizeState(storage, state, osTick);
-  }
-  stateEstimatorAssertNotNaN();
+  stateEstimatorAssertNotNaN(storage);
 }
 
 static bool enqueueMeasurement(xQueueHandle queue, const void* measurement) {
@@ -556,24 +549,20 @@ static bool enqueueMeasurement(xQueueHandle queue, const void* measurement) {
   return (result == pdTRUE);
 }
 
-static bool enqueueDistance(estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance) {
+static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance) {
   ASSERT(storage->isInit);
   return enqueueMeasurement(storage->distDataQueue, (void *)distance);
 }
 
-static bool enqueuePosition(estimatorKalmanStorage_t* storage, const positionMeasurement_t* position) {
+static bool enqueuePosition(const estimatorKalmanStorage_t* storage, const positionMeasurement_t* position) {
   ASSERT(storage->isInit);
   return enqueueMeasurement(storage->posDataQueue, (void *)position);
 }
 
-static point_t getPosition(const estimatorKalmanStorage_t* storage) {
-  point_t pos = {
-    .x = storage->S[STATE_X],
-    .y = storage->S[STATE_Y],
-    .z = storage->S[STATE_Z]
-  };
-
-  return pos;
+static void getPosition(const estimatorKalmanStorage_t* storage, point_t* position) {
+  position->x = storage->S[STATE_X];
+  position->y = storage->S[STATE_Y];
+  position->z = storage->S[STATE_Z];
 }
 
 estimatorKalmanEngine_t estimatorKalmanEngine = {
@@ -581,5 +570,6 @@ estimatorKalmanEngine_t estimatorKalmanEngine = {
   .update = update,
   .enqueuePosition = enqueuePosition,
   .enqueueDistance = enqueueDistance,
-  .getPosition = getPosition
+  .getPosition = getPosition,
+  .getState = getState
 };
