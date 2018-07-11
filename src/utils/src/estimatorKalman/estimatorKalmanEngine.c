@@ -191,25 +191,31 @@ static void init(estimatorKalmanStorage_t* storage) {
 }
 
 static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise) {
+  /*****************************************/
+  // Temporary matrices used for calculations. Declared static because it is the only way: the stack is too small for storing them
+  /*****************************************/
+
   // The Kalman gain as a column vector
-  float K[STATE_DIM];
-  arm_matrix_instance_f32 Km = {STATE_DIM, 1, (float *)K};
+  static float K[STATE_DIM];
+  static arm_matrix_instance_f32 Km = {STATE_DIM, 1, (float *)K};
 
   // Temporary matrices for the covariance updates
-  float tmpNN1d[STATE_DIM * STATE_DIM];
-  arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
+  static float tmpNN1d[STATE_DIM * STATE_DIM];
+  static arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
 
-  float tmpNN2d[STATE_DIM * STATE_DIM];
-  arm_matrix_instance_f32 tmpNN2m = {STATE_DIM, STATE_DIM, tmpNN2d};
+  static float tmpNN2d[STATE_DIM * STATE_DIM];
+  static arm_matrix_instance_f32 tmpNN2m = {STATE_DIM, STATE_DIM, tmpNN2d};
 
-  float tmpNN3d[STATE_DIM * STATE_DIM];
-  arm_matrix_instance_f32 tmpNN3m = {STATE_DIM, STATE_DIM, tmpNN3d};
+  static float tmpNN3d[STATE_DIM * STATE_DIM];
+  static arm_matrix_instance_f32 tmpNN3m = {STATE_DIM, STATE_DIM, tmpNN3d};
 
-  float HTd[STATE_DIM * 1];
-  arm_matrix_instance_f32 HTm = {STATE_DIM, 1, HTd};
+  static float HTd[STATE_DIM * 1];
+  static arm_matrix_instance_f32 HTm = {STATE_DIM, 1, HTd};
 
-  float PHTd[STATE_DIM * 1];
-  arm_matrix_instance_f32 PHTm = {STATE_DIM, 1, PHTd};
+  static float PHTd[STATE_DIM * 1];
+  static arm_matrix_instance_f32 PHTm = {STATE_DIM, 1, PHTd};
+
+  /*****************************************/
 
   configASSERT(Hm->numRows == 1);
   configASSERT(Hm->numCols == STATE_DIM);
@@ -296,16 +302,22 @@ static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasur
 }
 
 static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
+  /*****************************************/
+  // Temporary matrices used for calculations. Declared static because it is the only way: the stack is too small for storing them
+  /*****************************************/
+
   // Matrix to rotate the attitude covariances once updated
-  float A[STATE_DIM][STATE_DIM];
-  arm_matrix_instance_f32 Am = {STATE_DIM, STATE_DIM, (float *)A};
+  static float A[STATE_DIM][STATE_DIM];
+  static arm_matrix_instance_f32 Am = {STATE_DIM, STATE_DIM, (float *)A};
 
   // Temporary matrices for the covariance updates
-  float tmpNN1d[STATE_DIM * STATE_DIM];
-  arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
+  static float tmpNN1d[STATE_DIM * STATE_DIM];
+  static arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
 
-  float tmpNN2d[STATE_DIM * STATE_DIM];
-  arm_matrix_instance_f32 tmpNN2m = {STATE_DIM, STATE_DIM, tmpNN2d};
+  static float tmpNN2d[STATE_DIM * STATE_DIM];
+  static arm_matrix_instance_f32 tmpNN2m = {STATE_DIM, STATE_DIM, tmpNN2d};
+
+  /*****************************************/
 
   // Incorporate the attitude error (Kalman filter state) with the attitude
   float v0 = storage->S[STATE_D0];

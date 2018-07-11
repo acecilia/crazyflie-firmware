@@ -11,6 +11,9 @@ typedef enum
   STATE_X, STATE_Y, STATE_Z, STATE_PX, STATE_PY, STATE_PZ, STATE_D0, STATE_D1, STATE_D2, STATE_DIM
 } stateIdx_t;
 
+/*
+ * The struct keeping the internal storage for the kalman estimator. Declare it statically: using it in any other way may cause stack overflow or fill the available dynamic memory
+ */
 typedef struct {
   float S[STATE_DIM];
 
@@ -33,24 +36,6 @@ typedef struct {
   // Internal variables. Note that static declaration results in default initialization (to 0)
   bool isInit;
   bool resetEstimation;
-  /* No used */ // int32_t lastPrediction;
-  /* No used */ // int32_t lastBaroUpdate;
-  /* No used */ // int32_t lastPNUpdate;
-  /* No used */ // Axis3f accAccumulator;
-  /* No used */ // float thrustAccumulator;
-  /* No used */ // Axis3f gyroAccumulator;
-  /* No used */ // baro_t baroAccumulator;
-  /* No used */ // uint32_t accAccumulatorCount;
-  /* No used */ // uint32_t thrustAccumulatorCount;
-  /* No used */ // uint32_t gyroAccumulatorCount;
-  /* No used */ // uint32_t baroAccumulatorCount;
-  /* No used */ // bool quadIsFlying;
-  /* No used */ // int32_t lastTDOAUpdate;
-  /* No used */ // float stateSkew;
-  /* No used */ // float varSkew;
-  /* No used */ // uint32_t lastFlightCmd;
-  /* No used */ // uint32_t takeoffTime;
-  /* No used */ // uint32_t tdoaCount;
 } estimatorKalmanStorage_t;
 
 #endif /* estimatorKalmanStorage_h */
