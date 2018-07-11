@@ -75,6 +75,7 @@ VPATH_CF2 += src/deck/api src/deck/core src/deck/drivers/src src/deck/drivers/sr
 VPATH_CF2 += src/utils/src/clockCorrection
 VPATH_CF2 += src/utils/src/randomizedTimer
 VPATH_CF2 += src/utils/src/leakyBucket
+VPATH_CF2 += src/utils/src/estimatorKalman
 VPATH_CF2 += src/deck/drivers/src/TwrSwarm
 CRT0_CF2 = startup_stm32f40xx.o system_stm32f4xx.o
 
@@ -227,6 +228,7 @@ PROJ_OBJ += filter.o cpuid.o cfassert.o  eprintf.o crc.o num.o debug.o
 PROJ_OBJ += version.o FreeRTOS-openocd.o
 PROJ_OBJ_CF2 += configblockeeprom.o crc_bosch.o
 PROJ_OBJ_CF2 += sleepus.o
+PROJ_OBJ_CF2 += estimatorKalmanEngine.o
 
 # Libs
 PROJ_OBJ_CF2 += libarm_math.a
@@ -261,6 +263,7 @@ INCLUDES_CF2 += -Isrc/deck/interface -Isrc/deck/drivers/interface
 INCLUDES_CF2 += -Isrc/utils/interface/clockCorrection
 INCLUDES_CF2 += -Isrc/utils/interface/randomizedTimer
 INCLUDES_CF2 += -Isrc/utils/interface/leakyBucket
+INCLUDES_CF2 += -Isrc/utils/interface/estimatorKalman
 INCLUDES_CF2 += -Isrc/deck/drivers/interface/TwrSwarm
 INCLUDES_CF2 += -Ivendor/libdw1000/inc
 INCLUDES_CF2 += -Ivendor/libdict/include
