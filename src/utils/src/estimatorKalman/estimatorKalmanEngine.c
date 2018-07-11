@@ -187,55 +187,66 @@ static void init(estimatorKalmanStorage_t* storage) {
 
   storage->Pm = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->P };
 
-  // Initialise tmp variables
-  storage->Am = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->A };
-  storage->Km = (arm_matrix_instance_f32){ STATE_DIM, 1, storage->K };
-  storage->tmpNN1m = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, storage->tmpNN1d };
-  storage->tmpNN2m = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, storage->tmpNN2d };
-  storage->tmpNN3m = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, storage->tmpNN3d };
-  storage->HTm = (arm_matrix_instance_f32){ STATE_DIM, 1, storage->HTd };
-  storage->PHTm = (arm_matrix_instance_f32){ STATE_DIM, 1, storage->PHTd };
-
   storage->isInit = true;
 }
 
 static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise) {
+  // The Kalman gain as a column vector
+  float K[STATE_DIM];
+  arm_matrix_instance_f32 Km = {STATE_DIM, 1, (float *)K};
+
+  // Temporary matrices for the covariance updates
+  float tmpNN1d[STATE_DIM * STATE_DIM];
+  arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
+
+  float tmpNN2d[STATE_DIM * STATE_DIM];
+  arm_matrix_instance_f32 tmpNN2m = {STATE_DIM, STATE_DIM, tmpNN2d};
+
+  float tmpNN3d[STATE_DIM * STATE_DIM];
+  arm_matrix_instance_f32 tmpNN3m = {STATE_DIM, STATE_DIM, tmpNN3d};
+
+  float HTd[STATE_DIM * 1];
+  arm_matrix_instance_f32 HTm = {STATE_DIM, 1, HTd};
+
+  float PHTd[STATE_DIM * 1];
+  arm_matrix_instance_f32 PHTm = {STATE_DIM, 1, PHTd};
+
   configASSERT(Hm->numRows == 1);
   configASSERT(Hm->numCols == STATE_DIM);
 
   // ====== INNOVATION COVARIANCE ======
 
-  mat_trans(Hm, &storage->HTm);
-  mat_mult(&storage->Pm, &storage->HTm, &storage->PHTm); // PH'
+  mat_trans(Hm, &HTm);
+  mat_mult(&storage->Pm, &HTm, &PHTm); // PH'
   float R = powf(stdMeasNoise, 2);
   float HPHR = R; // HPH' + R
   for (int i=0; i<STATE_DIM; i++) { // Add the element of HPH' to the above
-    HPHR += Hm->pData[i]*storage->PHTd[i]; // this obviously only works if the update is scalar (as in this function)
+    HPHR += Hm->pData[i]*PHTd[i]; // this obviously only works if the update is scalar (as in this function)
   }
   configASSERT(!isnan(HPHR));
 
   // ====== MEASUREMENT UPDATE ======
   // Calculate the Kalman gain and perform the state update
   for (int i=0; i<STATE_DIM; i++) {
-    storage->K[i] = storage->PHTd[i]/HPHR; // kalman gain = (PH' (HPH' + R )^-1)
-    storage->S[i] = storage->S[i] + storage->K[i] * error; // state update
+    K[i] = PHTd[i]/HPHR; // kalman gain = (PH' (HPH' + R )^-1)
+    storage->S[i] = storage->S[i] + K[i] * error; // state update
   }
   stateEstimatorAssertNotNaN();
 
   // ====== COVARIANCE UPDATE ======
-  mat_mult(&storage->Km, Hm, &storage->tmpNN1m); // KH
+  mat_mult(&Km, Hm, &tmpNN1m); // KH
   for (int i=0; i<STATE_DIM; i++) {
-    storage->tmpNN1d[STATE_DIM*i+i] -= 1;
+    tmpNN1d[STATE_DIM*i+i] -= 1;
   } // KH - I
-  mat_trans(&storage->tmpNN1m, &storage->tmpNN2m); // (KH - I)'
-  mat_mult(&storage->tmpNN1m, &storage->Pm, &storage->tmpNN3m); // (KH - I)*P
-  mat_mult(&storage->tmpNN3m, &storage->tmpNN2m, &storage->Pm); // (KH - I)*P*(KH - I)'
+  mat_trans(&tmpNN1m, &tmpNN2m); // (KH - I)'
+  mat_mult(&tmpNN1m, &storage->Pm, &tmpNN3m); // (KH - I)*P
+  mat_mult(&tmpNN3m, &tmpNN2m, &storage->Pm); // (KH - I)*P*(KH - I)'
   stateEstimatorAssertNotNaN();
   // add the measurement variance and ensure boundedness and symmetry
   // TODO: Why would it hit these bounds? Needs to be investigated.
   for (int i=0; i<STATE_DIM; i++) {
     for (int j=i; j<STATE_DIM; j++) {
-      float v = storage->K[i] * R * storage->K[j];
+      float v = K[i] * R * K[j];
       float p = 0.5f*storage->P[i][j] + 0.5f*storage->P[j][i] + v; // add measurement noise
       if (isnan(p) || p > MAX_COVARIANCE) {
         storage->P[i][j] = storage->P[j][i] = MAX_COVARIANCE;
@@ -285,14 +296,24 @@ static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasur
 }
 
 static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
+  // Matrix to rotate the attitude covariances once updated
+  float A[STATE_DIM][STATE_DIM];
+  arm_matrix_instance_f32 Am = {STATE_DIM, STATE_DIM, (float *)A};
+
+  // Temporary matrices for the covariance updates
+  float tmpNN1d[STATE_DIM * STATE_DIM];
+  arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
+
+  float tmpNN2d[STATE_DIM * STATE_DIM];
+  arm_matrix_instance_f32 tmpNN2m = {STATE_DIM, STATE_DIM, tmpNN2d};
+
   // Incorporate the attitude error (Kalman filter state) with the attitude
   float v0 = storage->S[STATE_D0];
   float v1 = storage->S[STATE_D1];
   float v2 = storage->S[STATE_D2];
 
   // Move attitude error into attitude if any of the angle errors are large enough
-  if ((fabsf(v0) > 0.1e-3f || fabsf(v1) > 0.1e-3f || fabsf(v2) > 0.1e-3f) && (fabsf(v0) < 10 && fabsf(v1) < 10 && fabsf(v2) < 10))
-  {
+  if ((fabsf(v0) > 0.1e-3f || fabsf(v1) > 0.1e-3f || fabsf(v2) > 0.1e-3f) && (fabsf(v0) < 10 && fabsf(v1) < 10 && fabsf(v2) < 10)) {
     float angle = arm_sqrt(v0*v0 + v1*v1 + v2*v2);
     float ca = arm_cos_f32(angle / 2.0f);
     float sa = arm_sin_f32(angle / 2.0f);
@@ -326,29 +347,29 @@ static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
     float d1 = v1/2; // so we use a first order approximation to d0 = tan(|v0|/2)*v0/|v0|
     float d2 = v2/2;
 
-    storage->A[STATE_X][STATE_X] = 1;
-    storage->A[STATE_Y][STATE_Y] = 1;
-    storage->A[STATE_Z][STATE_Z] = 1;
+    A[STATE_X][STATE_X] = 1;
+    A[STATE_Y][STATE_Y] = 1;
+    A[STATE_Z][STATE_Z] = 1;
 
-    storage->A[STATE_PX][STATE_PX] = 1;
-    storage->A[STATE_PY][STATE_PY] = 1;
-    storage->A[STATE_PZ][STATE_PZ] = 1;
+    A[STATE_PX][STATE_PX] = 1;
+    A[STATE_PY][STATE_PY] = 1;
+    A[STATE_PZ][STATE_PZ] = 1;
 
-    storage->A[STATE_D0][STATE_D0] =  1 - d1*d1/2 - d2*d2/2;
-    storage->A[STATE_D0][STATE_D1] =  d2 + d0*d1/2;
-    storage->A[STATE_D0][STATE_D2] = -d1 + d0*d2/2;
+    A[STATE_D0][STATE_D0] =  1 - d1*d1/2 - d2*d2/2;
+    A[STATE_D0][STATE_D1] =  d2 + d0*d1/2;
+    A[STATE_D0][STATE_D2] = -d1 + d0*d2/2;
 
-    storage->A[STATE_D1][STATE_D0] = -d2 + d0*d1/2;
-    storage->A[STATE_D1][STATE_D1] =  1 - d0*d0/2 - d2*d2/2;
-    storage->A[STATE_D1][STATE_D2] =  d0 + d1*d2/2;
+    A[STATE_D1][STATE_D0] = -d2 + d0*d1/2;
+    A[STATE_D1][STATE_D1] =  1 - d0*d0/2 - d2*d2/2;
+    A[STATE_D1][STATE_D2] =  d0 + d1*d2/2;
 
-    storage->A[STATE_D2][STATE_D0] =  d1 + d0*d2/2;
-    storage->A[STATE_D2][STATE_D1] = -d0 + d1*d2/2;
-    storage->A[STATE_D2][STATE_D2] = 1 - d0*d0/2 - d1*d1/2;
+    A[STATE_D2][STATE_D0] =  d1 + d0*d2/2;
+    A[STATE_D2][STATE_D1] = -d0 + d1*d2/2;
+    A[STATE_D2][STATE_D2] = 1 - d0*d0/2 - d1*d1/2;
 
-    mat_trans(&storage->Am, &storage->tmpNN1m); // A'
-    mat_mult(&storage->Am, &storage->Pm, &storage->tmpNN2m); // AP
-    mat_mult(&storage->tmpNN2m, &storage->tmpNN1m, &storage->Pm); //APA'
+    mat_trans(&Am, &tmpNN1m); // A'
+    mat_mult(&Am, &storage->Pm, &tmpNN2m); // AP
+    mat_mult(&tmpNN2m, &tmpNN1m, &storage->Pm); //APA'
   }
 
   // convert the new attitude to a rotation matrix, such that we can rotate body-frame velocity and acc
