@@ -57,7 +57,7 @@ typedef struct {
   arm_matrix_instance_f32 Am;
 
   // The Kalman gain as a column vector
-  float K[STATE_DIM];
+  float K[STATE_DIM * 1];
   arm_matrix_instance_f32 Km;
 
   // Temporary matrices for the covariance updates
