@@ -314,6 +314,8 @@ CFLAGS += -MD -MP -MF $(BIN)/dep/$(@).d -MQ $(@)
 CFLAGS += -ffunction-sections -fdata-sections
 # Prevent promoting floats to doubles
 CFLAGS += -Wdouble-promotion
+# Print stack usage. See: https://www.netburner.com/learn/detecting-stack-overflows-on-an-embedded-system
+CFLAGS += -fstack-usage
 
 
 ASFLAGS = $(PROCESSOR) $(INCLUDES)

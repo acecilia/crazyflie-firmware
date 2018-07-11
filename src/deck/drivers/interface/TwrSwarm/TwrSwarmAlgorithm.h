@@ -5,6 +5,7 @@
 #include "locodeck.h"
 #include "libdict.h"
 #include "clockCorrectionStorage.h"
+#include "estimatorKalmanStorage.h"
 
 typedef uint8_t locoId_t;
 typedef uint16_t locoIdx2_t;
@@ -50,8 +51,7 @@ typedef struct {
   clockCorrectionStorage_t clockCorrectionStorage;
   uint8_t expectedSeqNr; // Expected sequence number for the received packet
 
-  point_t position; // The coordinates of the anchor
-
+  estimatorKalmanStorage_t estimatorKalmanStorage; // Used to obtain the coordinates of the neighbour
 } __attribute__((packed)) neighbourData_t;
 
 /**

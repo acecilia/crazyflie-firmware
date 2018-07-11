@@ -1,5 +1,6 @@
 #include "TwrSwarmAlgorithmBlocks.h"
 #include "clockCorrectionEngine.h"
+#include "estimatorKalmanEngine.h"
 #include <stdlib.h>
 #include "limits.h"
 #include "stabilizer_types.h"
@@ -222,12 +223,8 @@ neighbourData_t* getDataForNeighbour(dict* dct, const locoId_t id, const bool in
       data->clockCorrectionStorage.clockCorrection = 1;
       data->clockCorrectionStorage.clockCorrectionBucket = 0;
       data->expectedSeqNr = 0;
-      data->position = (point_t){
-        .timestamp = 0,
-        .x = 0,
-        .y = 0,
-        .z = 0
-      };
+
+      estimatorKalmanEngine.init(&data->estimatorKalmanStorage);
 
       dict_insert_result insert_result = dict_insert(dct, key);
       *insert_result.datum_ptr = data;
@@ -404,8 +401,9 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   tofData.stdDev = 0;
   estimatorKalmanEnqueueTOF(&tofData);
 
+
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-  debug.localRx = neighbourData->position.x;
+  debug.localRx = estimatorKalmanEngine.getPosition(&neighbourData->estimatorKalmanStorage).x;
   estimatorKalmanGetEstimatedPos(&debug.position);
 #endif
 }
@@ -424,15 +422,15 @@ void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* n
       tofData_t* tofData = getTofDataBetween(tofDct, remoteId, neighbourId, false);
 
       if (tofData != NULL) {
-        point_t* positionData = &((neighbourData_t*)*dict_itor_datum(itor))->position;
+        neighbourData_t* neighbourData = (neighbourData_t*)*dict_itor_datum(itor);
+        point_t positionData = estimatorKalmanEngine.getPosition(&neighbourData->estimatorKalmanStorage);
 
-        if(positionData->timestamp != 0) {
-          distances[distancesIndex].x = positionData->x;
-          distances[distancesIndex].y = positionData->y;
-          distances[distancesIndex].z = positionData->z;
-          distances[distancesIndex].distance = calculateDistance(tofData->tof);
-          distancesIndex++;
-        }
+        // TODO: what to do if there is no position yet
+        distances[distancesIndex].x = positionData.x;
+        distances[distancesIndex].y = positionData.y;
+        distances[distancesIndex].z = positionData.z;
+        distances[distancesIndex].distance = calculateDistance(tofData->tof);
+        distancesIndex++;
       }
     }
     dict_itor_next(itor);
@@ -442,54 +440,44 @@ void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* n
   // Distances are ready: set position
   if(neighbours == 1 && distancesIndex == 0) {
     // Set the first discovered copter as the (0, 0, 0) point of the about-to-be-defined coordinate system
-    neighbourData->position.x = 0;
-    neighbourData->position.y = 0;
-    neighbourData->position.z = 0;
-    neighbourData->position.timestamp = xTaskGetTickCount();
+    positionMeasurement_t position = { .x = -1, .y = 0, .z = 0, .stdDev = 0.25 };
+    estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, &position);
   } else if(neighbours == 2 && distancesIndex == 1) {
     // TODO: see how to avoid coordinate system shifting
     float xPositionCandidate;
     // Set the second discovered copter in the X axis, following the first copter position
-    if (neighbourData->position.x >= distances[0].x) {
+    if (estimatorKalmanEngine.getPosition(&neighbourData->estimatorKalmanStorage).x >= distances[0].x) {
       xPositionCandidate = distances[0].x + distances[0].distance;
     } else {
       xPositionCandidate = distances[0].x - distances[0].distance;
     }
 
-    float xPositionDiff;
-    if(xPositionCandidate >= neighbourData->position.x) {
-      xPositionDiff = xPositionCandidate - neighbourData->position.x;
-    } else {
-      xPositionDiff = neighbourData->position.x - xPositionCandidate;
-    }
-
-    if (xPositionDiff > 0.1f) {
-      neighbourData->position.x = xPositionCandidate;
-    }
-
-    neighbourData->position.y = distances[0].y;
-    neighbourData->position.z = distances[0].z;
-    neighbourData->position.timestamp = xTaskGetTickCount();
+    positionMeasurement_t position = { .x = xPositionCandidate, .y = 0, .z = 0, .stdDev = 0.25 };
+    estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, &position);
+  } else {
+    positionMeasurement_t position = { .x = 99, .y = 0, .z = 0, .stdDev = 0.25 };
+    estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, &position);
   }
   // TODO: next cases
+
+  estimatorKalmanEngine.update(&neighbourData->estimatorKalmanStorage, NULL, xTaskGetTickCount());
 }
 
 void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, dict* tofDct) {
-  point_t* remotePosition = &neighbourData->position;
+  point_t remotePosition = estimatorKalmanEngine.getPosition(&neighbourData->estimatorKalmanStorage);
 
-  // The position is known
-  if(remotePosition->timestamp != 0) {
-    tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, false);
+  // TODO: what to do if there is no position yet
+  tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, false);
 
-    // The tof information was previously calculated
-    if(tofData != NULL) {
-      distanceMeasurement_t dist;
-      dist.distance = calculateDistance(tofData->tof);
-      dist.x = remotePosition->x;
-      dist.y = remotePosition->y;
-      dist.z = remotePosition->z;
-      dist.stdDev = 0.25;
-      estimatorKalmanEnqueueDistance(&dist);
-    }
+  // The tof information was previously calculated
+  if(tofData != NULL) {
+    distanceMeasurement_t dist = {
+      .distance = calculateDistance(tofData->tof),
+      .x = remotePosition.x,
+      .y = remotePosition.y,
+      .z = remotePosition.z,
+      .stdDev = 0.25
+    };
+    estimatorKalmanEnqueueDistance(&dist);
   }
 }
