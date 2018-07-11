@@ -28,7 +28,7 @@ typedef struct {
 
   // The covariance matrix
   float P[STATE_DIM][STATE_DIM];
-  arm_matrix_instance_f32 Pm; //  = {STATE_DIM, STATE_DIM, (float *)P};
+  arm_matrix_instance_f32 Pm;
 
   // Internal variables. Note that static declaration results in default initialization (to 0)
   bool isInit;
@@ -54,27 +54,27 @@ typedef struct {
 
   // Matrix to rotate the attitude covariances once updated
   float A[STATE_DIM][STATE_DIM];
-  arm_matrix_instance_f32 Am; // = {STATE_DIM, STATE_DIM, (float *)A};
+  arm_matrix_instance_f32 Am;
 
   // The Kalman gain as a column vector
   float K[STATE_DIM];
-  arm_matrix_instance_f32 Km; // = {STATE_DIM, 1, (float *)K};
+  arm_matrix_instance_f32 Km;
 
   // Temporary matrices for the covariance updates
   float tmpNN1d[STATE_DIM * STATE_DIM];
-  arm_matrix_instance_f32 tmpNN1m; // = {STATE_DIM, STATE_DIM, tmpNN1d};
+  arm_matrix_instance_f32 tmpNN1m;
 
   float tmpNN2d[STATE_DIM * STATE_DIM];
-  arm_matrix_instance_f32 tmpNN2m; // = {STATE_DIM, STATE_DIM, tmpNN2d};
+  arm_matrix_instance_f32 tmpNN2m;
 
   float tmpNN3d[STATE_DIM * STATE_DIM];
-  arm_matrix_instance_f32 tmpNN3m; // = {STATE_DIM, STATE_DIM, tmpNN3d};
+  arm_matrix_instance_f32 tmpNN3m;
 
   float HTd[STATE_DIM * 1];
-  arm_matrix_instance_f32 HTm; // = {STATE_DIM, 1, HTd};
+  arm_matrix_instance_f32 HTm;
 
   float PHTd[STATE_DIM * 1];
-  arm_matrix_instance_f32 PHTm; // = {STATE_DIM, 1, PHTd};
+  arm_matrix_instance_f32 PHTm;
 } kalmanStorage_t;
 
 #endif /* estimatorKalmanStorage_h */

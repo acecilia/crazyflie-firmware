@@ -185,6 +185,8 @@ static void init(kalmanStorage_t* storage) {
   storage->P[STATE_D1][STATE_D1] = powf(stdDevInitialAttitude_rollpitch, 2);
   storage->P[STATE_D2][STATE_D2] = powf(stdDevInitialAttitude_yaw, 2);
 
+  storage->Pm = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->P };
+
   // Initialise tmp variables
   storage->Am = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->A };
   storage->Km = (arm_matrix_instance_f32){ STATE_DIM, 1, storage->K };
