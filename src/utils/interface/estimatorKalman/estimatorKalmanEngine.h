@@ -7,13 +7,14 @@
 
 typedef struct {
   void (*init)(estimatorKalmanStorage_t* storage);
-  void (*update)(estimatorKalmanStorage_t* storage, state_t *state, const uint32_t tick);
+  void (*update)(estimatorKalmanStorage_t* storage);
 
   // Incorporation of additional data
-  bool (*enqueuePosition)(estimatorKalmanStorage_t* storage, const positionMeasurement_t* position);
-  bool (*enqueueDistance)(estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance);
+  bool (*enqueuePosition)(const estimatorKalmanStorage_t* storage, const positionMeasurement_t* position);
+  bool (*enqueueDistance)(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance);
 
-  point_t (*getPosition)(const estimatorKalmanStorage_t* storage);
+  void (*getPosition)(const estimatorKalmanStorage_t* storage, point_t* position);
+  void (*getState)(const estimatorKalmanStorage_t* storage, state_t* state);
 } estimatorKalmanEngine_t;
 
 extern estimatorKalmanEngine_t estimatorKalmanEngine;
