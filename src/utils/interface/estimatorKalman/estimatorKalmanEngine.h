@@ -6,7 +6,7 @@
 #include "estimatorKalmanStorage.h"
 
 typedef struct {
-  void (*init)(estimatorKalmanStorage_t* storage);
+  void (*init)(estimatorKalmanStorage_t* storage, const point_t initialPosition, const velocity_t initialVelocity);
   void (*update)(estimatorKalmanStorage_t* storage);
 
   // Incorporation of additional data
