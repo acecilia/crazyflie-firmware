@@ -44,10 +44,6 @@ static float procNoiseAtt = 0;
 static float measNoiseGyro_rollpitch = 0.1f; // radians per second
 static float measNoiseGyro_yaw = 0.1f; // radians per second
 
-static const float initialX = 0.5;
-static const float initialY = 0.5;
-static const float initialZ = 0.0;
-
 /**
  * Queue related
  */
@@ -167,7 +163,7 @@ static void addProcessNoise(estimatorKalmanStorage_t* storage, float dt) {
   stateEstimatorAssertNotNaN(storage);
 }
 
-static void init(estimatorKalmanStorage_t* storage) {
+static void init(estimatorKalmanStorage_t* storage, const point_t initialPosition, const velocity_t initialVelocity) {
   // Reset the queues
   if (!storage->isInit) {
     storage->posDataQueue = xQueueCreate(POS_QUEUE_LENGTH, sizeof(positionMeasurement_t));
@@ -179,12 +175,12 @@ static void init(estimatorKalmanStorage_t* storage) {
 
   // Initialize the state
   // TODO: Can we initialize this more intelligently?
-  storage->S[STATE_X] = initialX;
-  storage->S[STATE_Y] = initialY;
-  storage->S[STATE_Z] = initialZ;
-  storage->S[STATE_PX] = 0;
-  storage->S[STATE_PY] = 0;
-  storage->S[STATE_PZ] = 0;
+  storage->S[STATE_X] = initialPosition.x;
+  storage->S[STATE_Y] = initialPosition.y;
+  storage->S[STATE_Z] = initialPosition.z;
+  storage->S[STATE_PX] = initialVelocity.z;
+  storage->S[STATE_PY] = initialVelocity.y;
+  storage->S[STATE_PZ] = initialVelocity.z;
   storage->S[STATE_D0] = 0;
   storage->S[STATE_D1] = 0;
   storage->S[STATE_D2] = 0;
@@ -516,12 +512,6 @@ static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
 }
 
 static void update(estimatorKalmanStorage_t* storage) {
-  // If the client (via a parameter update) triggers an estimator reset:
-  if (storage->resetEstimation) {
-    init(storage);
-    storage->resetEstimation = false;
-  }
-
   // Tracks whether an update to the state has been made, and the state therefore requires finalization
   bool doneUpdate = false;
   uint32_t tick = xTaskGetTickCount(); // would be nice if this had a precision higher than 1ms...

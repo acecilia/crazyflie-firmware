@@ -44,9 +44,8 @@ typedef struct {
   float P[STATE_DIM][STATE_DIM];
   arm_matrix_instance_f32 Pm;
 
-  // Internal variables. Note that static declaration results in default initialization (to 0)
+  // Internal variables
   bool isInit;
-  bool resetEstimation;
   uint32_t lastPNUpdate;
 } estimatorKalmanStorage_t;
 
