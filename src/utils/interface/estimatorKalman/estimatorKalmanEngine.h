@@ -13,6 +13,7 @@ typedef struct {
   bool (*enqueuePosition)(const estimatorKalmanStorage_t* storage, const positionMeasurement_t position);
   bool (*enqueueDistance)(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t distance);
 
+  // Get information about the internal state
   void (*getPosition)(const estimatorKalmanStorage_t* storage, point_t* position);
   void (*getState)(const estimatorKalmanStorage_t* storage, state_t* state);
 } estimatorKalmanEngine_t;
