@@ -132,6 +132,59 @@ static void decoupleState(estimatorKalmanStorage_t* storage, stateIdx_t state) {
  * Main Kalman Filter functions
  */
 
+static void getPosition(const estimatorKalmanStorage_t* storage, point_t* position) {
+  ASSERT(storage->isInit);
+
+  position->x = storage->S[STATE_X];
+  position->y = storage->S[STATE_Y];
+  position->z = storage->S[STATE_Z];
+}
+
+static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
+  ASSERT(storage->isInit);
+
+  uint32_t tick = xTaskGetTickCount();
+
+  // position state is already in world frame
+  state->position = (point_t){
+    .timestamp = tick,
+    .x = storage->S[STATE_X],
+    .y = storage->S[STATE_Y],
+    .z = storage->S[STATE_Z]
+  };
+
+  // velocity is in body frame and needs to be rotated to world frame
+  state->velocity = (velocity_t){
+    .timestamp = tick,
+    .x = storage->R[0][0]*storage->S[STATE_PX] + storage->R[0][1]*storage->S[STATE_PY] + storage->R[0][2]*storage->S[STATE_PZ],
+    .y = storage->R[1][0]*storage->S[STATE_PX] + storage->R[1][1]*storage->S[STATE_PY] + storage->R[1][2]*storage->S[STATE_PZ],
+    .z = storage->R[2][0]*storage->S[STATE_PX] + storage->R[2][1]*storage->S[STATE_PY] + storage->R[2][2]*storage->S[STATE_PZ]
+  };
+
+  // convert the new attitude into Euler YPR
+  float yaw = atan2f(2*(storage->q[1]*storage->q[2]+storage->q[0]*storage->q[3]) , powf(storage->q[0], 2) + powf(storage->q[1], 2) - powf(storage->q[2], 2) - powf(storage->q[3], 2));
+  float pitch = asinf(-2*(storage->q[1]*storage->q[3] - storage->q[0]*storage->q[2]));
+  float roll = atan2f(2*(storage->q[2]*storage->q[3]+storage->q[0]*storage->q[1]) , powf(storage->q[0], 2) - powf(storage->q[1], 2) - powf(storage->q[2], 2) + powf(storage->q[3], 2));
+
+  // Save attitude, adjusted for the legacy CF2 body coordinate system
+  state->attitude = (attitude_t){
+    .timestamp = tick,
+    .roll = roll*RAD_TO_DEG,
+    .pitch = -pitch*RAD_TO_DEG,
+    .yaw = yaw*RAD_TO_DEG
+  };
+
+  // Save quaternion, hopefully one day this could be used in a better controller.
+  // Note that this is not adjusted for the legacy coordinate system
+  state->attitudeQuaternion = (quaternion_t){
+    .timestamp = tick,
+    .w = storage->q[0],
+    .x = storage->q[1],
+    .y = storage->q[2],
+    .z = storage->q[3]
+  };
+}
+
 static void addProcessNoise(estimatorKalmanStorage_t* storage, float dt) {
   if (dt > 0) {
     storage->P[STATE_X][STATE_X] += powf(procNoiseAcc_xy*dt*dt + procNoiseVel*dt + procNoisePos, 2); // add process noise on position
@@ -468,49 +521,6 @@ static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
   stateEstimatorAssertNotNaN(storage);
 }
 
-static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
-  uint32_t tick = xTaskGetTickCount();
-
-  // position state is already in world frame
-  state->position = (point_t){
-    .timestamp = tick,
-    .x = storage->S[STATE_X],
-    .y = storage->S[STATE_Y],
-    .z = storage->S[STATE_Z]
-  };
-
-  // velocity is in body frame and needs to be rotated to world frame
-  state->velocity = (velocity_t){
-    .timestamp = tick,
-    .x = storage->R[0][0]*storage->S[STATE_PX] + storage->R[0][1]*storage->S[STATE_PY] + storage->R[0][2]*storage->S[STATE_PZ],
-    .y = storage->R[1][0]*storage->S[STATE_PX] + storage->R[1][1]*storage->S[STATE_PY] + storage->R[1][2]*storage->S[STATE_PZ],
-    .z = storage->R[2][0]*storage->S[STATE_PX] + storage->R[2][1]*storage->S[STATE_PY] + storage->R[2][2]*storage->S[STATE_PZ]
-  };
-
-  // convert the new attitude into Euler YPR
-  float yaw = atan2f(2*(storage->q[1]*storage->q[2]+storage->q[0]*storage->q[3]) , powf(storage->q[0], 2) + powf(storage->q[1], 2) - powf(storage->q[2], 2) - powf(storage->q[3], 2));
-  float pitch = asinf(-2*(storage->q[1]*storage->q[3] - storage->q[0]*storage->q[2]));
-  float roll = atan2f(2*(storage->q[2]*storage->q[3]+storage->q[0]*storage->q[1]) , powf(storage->q[0], 2) - powf(storage->q[1], 2) - powf(storage->q[2], 2) + powf(storage->q[3], 2));
-
-  // Save attitude, adjusted for the legacy CF2 body coordinate system
-  state->attitude = (attitude_t){
-    .timestamp = tick,
-    .roll = roll*RAD_TO_DEG,
-    .pitch = -pitch*RAD_TO_DEG,
-    .yaw = yaw*RAD_TO_DEG
-  };
-
-  // Save quaternion, hopefully one day this could be used in a better controller.
-  // Note that this is not adjusted for the legacy coordinate system
-  state->attitudeQuaternion = (quaternion_t){
-    .timestamp = tick,
-    .w = storage->q[0],
-    .x = storage->q[1],
-    .y = storage->q[2],
-    .z = storage->q[3]
-  };
-}
-
 static void update(estimatorKalmanStorage_t* storage) {
   // Tracks whether an update to the state has been made, and the state therefore requires finalization
   bool doneUpdate = false;
@@ -554,7 +564,6 @@ static void update(estimatorKalmanStorage_t* storage) {
    */
   if (doneUpdate) {
     finalize(storage, tick);
-    stateEstimatorAssertNotNaN(storage);
   }
 
   stateEstimatorAssertNotNaN(storage);
@@ -576,20 +585,14 @@ static bool enqueueMeasurement(xQueueHandle queue, const void* measurement) {
   return (result == pdTRUE);
 }
 
-static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t distance) {
-  ASSERT(storage->isInit);
-  return enqueueMeasurement(storage->distDataQueue, (void *)&distance);
-}
-
 static bool enqueuePosition(const estimatorKalmanStorage_t* storage, const positionMeasurement_t position) {
   ASSERT(storage->isInit);
   return enqueueMeasurement(storage->posDataQueue, (void *)&position);
 }
 
-static void getPosition(const estimatorKalmanStorage_t* storage, point_t* position) {
-  position->x = storage->S[STATE_X];
-  position->y = storage->S[STATE_Y];
-  position->z = storage->S[STATE_Z];
+static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t distance) {
+  ASSERT(storage->isInit);
+  return enqueueMeasurement(storage->distDataQueue, (void *)&distance);
 }
 
 estimatorKalmanEngine_t estimatorKalmanEngine = {
