@@ -36,6 +36,14 @@ static const float stdDevInitialVelocity = 0.01;
 static const float stdDevInitialAttitude_rollpitch = 0.01;
 static const float stdDevInitialAttitude_yaw = 0.01;
 
+static float procNoiseAcc_xy = 0.5f;
+static float procNoiseAcc_z = 1.0f;
+static float procNoiseVel = 0;
+static float procNoisePos = 0;
+static float procNoiseAtt = 0;
+static float measNoiseGyro_rollpitch = 0.1f; // radians per second
+static float measNoiseGyro_yaw = 0.1f; // radians per second
+
 static const float initialX = 0.5;
 static const float initialY = 0.5;
 static const float initialZ = 0.0;
@@ -127,6 +135,37 @@ static void decoupleState(estimatorKalmanStorage_t* storage, stateIdx_t state) {
 /*
  * Main Kalman Filter functions
  */
+
+static void addProcessNoise(estimatorKalmanStorage_t* storage, float dt) {
+  if (dt > 0) {
+    storage->P[STATE_X][STATE_X] += powf(procNoiseAcc_xy*dt*dt + procNoiseVel*dt + procNoisePos, 2); // add process noise on position
+    storage->P[STATE_Y][STATE_Y] += powf(procNoiseAcc_xy*dt*dt + procNoiseVel*dt + procNoisePos, 2); // add process noise on position
+    storage->P[STATE_Z][STATE_Z] += powf(procNoiseAcc_z*dt*dt + procNoiseVel*dt + procNoisePos, 2); // add process noise on position
+
+    storage->P[STATE_PX][STATE_PX] += powf(procNoiseAcc_xy*dt + procNoiseVel, 2); // add process noise on velocity
+    storage->P[STATE_PY][STATE_PY] += powf(procNoiseAcc_xy*dt + procNoiseVel, 2); // add process noise on velocity
+    storage->P[STATE_PZ][STATE_PZ] += powf(procNoiseAcc_z*dt + procNoiseVel, 2); // add process noise on velocity
+
+    storage->P[STATE_D0][STATE_D0] += powf(measNoiseGyro_rollpitch * dt + procNoiseAtt, 2);
+    storage->P[STATE_D1][STATE_D1] += powf(measNoiseGyro_rollpitch * dt + procNoiseAtt, 2);
+    storage->P[STATE_D2][STATE_D2] += powf(measNoiseGyro_yaw * dt + procNoiseAtt, 2);
+  }
+
+  for (int i=0; i<STATE_DIM; i++) {
+    for (int j=i; j<STATE_DIM; j++) {
+      float p = 0.5f*storage->P[i][j] + 0.5f*storage->P[j][i];
+      if (isnan(p) || p > MAX_COVARIANCE) {
+        storage->P[i][j] = storage->P[j][i] = MAX_COVARIANCE;
+      } else if ( i==j && p < MIN_COVARIANCE ) {
+        storage->P[i][j] = storage->P[j][i] = MIN_COVARIANCE;
+      } else {
+        storage->P[i][j] = storage->P[j][i] = p;
+      }
+    }
+  }
+
+  stateEstimatorAssertNotNaN(storage);
+}
 
 static void init(estimatorKalmanStorage_t* storage) {
   // Reset the queues
@@ -498,23 +537,21 @@ static void update(estimatorKalmanStorage_t* storage) {
   /**
    * Add process noise every loop, rather than every prediction
    */
-  // addProcessNoise(storage, (float)(osTick - storage->lastPNUpdate) / configTICK_RATE_HZ);
-  // storage->lastPNUpdate = osTick;
+  addProcessNoise(storage, (float)(tick - storage->lastPNUpdate) / configTICK_RATE_HZ);
+  storage->lastPNUpdate = tick;
 
   /**
    * Sensor measurements can come in sporadically and faster than the stabilizer loop frequency,
    * we therefore consume all measurements since the last loop, rather than accumulating
    */
   positionMeasurement_t position;
-  while (hasPositionMeasurement(storage, &position))
-  {
+  while (hasPositionMeasurement(storage, &position)) {
     updateWithPosition(storage, &position);
     doneUpdate = true;
   }
 
   distanceMeasurement_t dist;
-  while (hasDistanceMeasurement(storage, &dist))
-  {
+  while (hasDistanceMeasurement(storage, &dist)) {
     updateWithDistance(storage, &dist);
     doneUpdate = true;
   }
@@ -549,14 +586,14 @@ static bool enqueueMeasurement(xQueueHandle queue, const void* measurement) {
   return (result == pdTRUE);
 }
 
-static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance) {
+static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t distance) {
   ASSERT(storage->isInit);
-  return enqueueMeasurement(storage->distDataQueue, (void *)distance);
+  return enqueueMeasurement(storage->distDataQueue, (void *)&distance);
 }
 
-static bool enqueuePosition(const estimatorKalmanStorage_t* storage, const positionMeasurement_t* position) {
+static bool enqueuePosition(const estimatorKalmanStorage_t* storage, const positionMeasurement_t position) {
   ASSERT(storage->isInit);
-  return enqueueMeasurement(storage->posDataQueue, (void *)position);
+  return enqueueMeasurement(storage->posDataQueue, (void *)&position);
 }
 
 static void getPosition(const estimatorKalmanStorage_t* storage, point_t* position) {

@@ -5,6 +5,17 @@
 #include "queue.h"
 #include "arm_math.h"
 
+/**
+ * Quadrocopter State
+ *
+ * The internally-estimated state is:
+ * - X, Y, Z: the quad's position in the global frame
+ * - PX, PY, PZ: the quad's velocity in its body frame
+ * - D0, D1, D2: attitude error
+ *
+ * For more information, refer to the paper
+ */
+
 // The quad's state, stored as a column vector
 typedef enum
 {
@@ -36,6 +47,7 @@ typedef struct {
   // Internal variables. Note that static declaration results in default initialization (to 0)
   bool isInit;
   bool resetEstimation;
+  uint32_t lastPNUpdate;
 } estimatorKalmanStorage_t;
 
 #endif /* estimatorKalmanStorage_h */
