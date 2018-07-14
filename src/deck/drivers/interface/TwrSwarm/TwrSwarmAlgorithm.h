@@ -10,6 +10,9 @@
 typedef uint8_t locoId_t;
 typedef uint16_t locoIdx2_t;
 
+#define NEIGHBOUR_STORAGE_CAPACITY 16
+#define TOF_STORAGE_CAPACITY (NEIGHBOUR_STORAGE_CAPACITY*(NEIGHBOUR_STORAGE_CAPACITY - 1) / 2)
+
 /**
  A type that relates the id of a drone with some associated information
  */
@@ -58,6 +61,9 @@ typedef struct {
  A type that encapsulates the information to keep track of the tof
  */
 typedef struct {
+  bool isInitialized;
+
+  locoIdx2_t id;
   uint16_t tof; // To be set after reception
 } __attribute__((packed)) tofData_t;
 

@@ -17,7 +17,7 @@ static struct {
   dwDevice_t* dev; // Needed when sending tx packets at random times
 
   dict* neighboursDct;
-  dict* tofDct;
+  tofData_t tofStorage[TOF_STORAGE_CAPACITY];
 
   locoId_t localId;
   uint8_t nextTxSeqNr; // Local sequence number of the transmitted packets
@@ -63,7 +63,11 @@ static void init(dwDevice_t *dev) {
 
   // Initialize the context
   ctx.neighboursDct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the neighbours data
-  ctx.tofDct = hashtable2_dict_new(dict_uint16_cmp, dict_uint16_hash, 10); // Dictionary storing the tof data
+
+  // Initialize tof storage
+  for(unsigned int i = 0; i < TOF_STORAGE_CAPACITY; i++) {
+    ctx.tofStorage[i].isInitialized = false;
+  }
 
   ctx.localId = generateId();
   DEBUG_PRINT("Swarm Id: %d\n", ctx.localId);
@@ -89,7 +93,7 @@ static void transmit(dwDevice_t *dev) {
 
   lpsSwarmPacket_t* txPacket = &packet;
 
-  setTxData(txPacket, ctx.localId, &ctx.nextTxSeqNr, ctx.neighboursDct, ctx.tofDct);
+  setTxData(txPacket, ctx.localId, &ctx.nextTxSeqNr, ctx.neighboursDct, ctx.tofStorage);
   unsigned int packetSize = calculatePacketSize(txPacket);
 
   // Set tx time inside txPacket
@@ -120,7 +124,7 @@ static void handleRxPacket(dwDevice_t *dev) {
 #endif
   }
 
-  processRxPacket(dev, ctx.localId, &packet, ctx.neighboursDct, ctx.tofDct);
+  processRxPacket(dev, ctx.localId, &packet, ctx.neighboursDct, ctx.tofStorage);
 }
 
 /**

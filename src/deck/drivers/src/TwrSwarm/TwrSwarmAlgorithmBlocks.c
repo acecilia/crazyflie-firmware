@@ -145,7 +145,7 @@ locoId_t generateIdNotIn(lpsSwarmPacket_t* packet, dict* dct) {
   }
 
   // Makes sure the cantidateId is not any of the destination ids on the packet
-  for(int i = 0; i < packet->header.payloadLength; i++) {
+  for(unsigned int i = 0; i < packet->header.payloadLength; i++) {
     payload_t* payload = (payload_t*)&(packet->payload);
     if (payload[i].id == cantidateId) {
       return generateIdNotIn(packet, dct);
@@ -188,27 +188,47 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
   return transmitTime;
 }
 
-tofData_t* getTofDataBetween(dict* dct, const locoId_t id1, const locoId_t id2, const bool insertIfNotFound) {
+tofData_t* findTof(tofData_t tofStorage[], const locoId_t id1, const locoId_t id2, const bool insertIfNotFound) {
+  unsigned int indexToInitialize = 0;
+  // TODO: lifetime span of the tof data
+  // uint32_t oldestUpdateTime = xTaskGetTickCount();
+
   locoIdx2_t id = getHashFromIds(id1, id2);
 
-  void** search_result = dict_search(dct, &id);
-  if (search_result) {
-    return (tofData_t *)*search_result;
-  } else {
-    if (insertIfNotFound) {
-      locoIdx2_t* key = pvPortMalloc(sizeof(locoIdx2_t));
-      *key = id;
-
-      tofData_t* data = pvPortMalloc(sizeof(tofData_t));
-      data->tof = 0;
-
-      dict_insert_result insert_result = dict_insert(dct, key);
-      *insert_result.datum_ptr = data;
-      return data;
-    } else {
-      return NULL;
+  for(unsigned int i = 0; i < TOF_STORAGE_CAPACITY; i++) {
+    if(tofStorage[i].isInitialized && tofStorage[i].id == id) {
+      return &tofStorage[i];
+    } else if(insertIfNotFound) {
+      if(!tofStorage[i].isInitialized) {
+        indexToInitialize = i;
+      } else if(/*anchorStorage[i].lastUpdateTime < oldestUpdateTime*/ false) {
+        // oldestUpdateTime = anchorStorage[i].lastUpdateTime;
+        indexToInitialize = i;
+      }
     }
   }
+
+  if(insertIfNotFound) {
+    tofStorage[indexToInitialize].isInitialized = true;
+    return &tofStorage[indexToInitialize];
+  } else {
+    return NULL;
+  }
+}
+
+/**
+ Count the number of elements inside the tof storage
+ */
+unsigned int countTof(tofData_t storage[]) {
+  unsigned int count = 0;
+
+  for(unsigned int i = 0; i < TOF_STORAGE_CAPACITY; i++) {
+    if(storage[i].isInitialized) {
+      count += 1;
+    }
+  }
+
+  return count;
 }
 
 static bool set = false;
@@ -249,7 +269,7 @@ unsigned int calculatePacketSize(lpsSwarmPacket_t* packet) {
   return sizeof(lpsSwarmPacketHeader_t) + packet->header.payloadLength * sizeof(payload_t);
 }
 
-void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeqNr, dict* neighbourDct, dict* tofDict) {
+void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeqNr, dict* neighbourDct, tofData_t tofStorage[]) {
   uint8_t payloadLength = dict_count(neighbourDct);
 
   txPacket->header.tx = 0; // This will be filled after setting the data of the txPacket, and inmediatelly before starting the transmission. For now, we zero it
@@ -266,12 +286,12 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeq
     for (unsigned int i = 0; i < payloadLength; i++) {
       locoId_t destinationId = *(locoId_t*)dict_itor_key(itor);
       neighbourData_t* neighbourData = (neighbourData_t*)*dict_itor_datum(itor);
-      tofData_t* tofData = getTofDataBetween(tofDict, sourceId, destinationId, false);
+      tofData_t* tofData = findTof(tofStorage, sourceId, destinationId, false);
       payload_t pair = {
         .id = destinationId,
         .tx = neighbourData->remoteTx,
         .rx = neighbourData->localRx,
-        .tof = tofData->tof
+        .tof = tofData != NULL ? tofData->tof : 0
       };
       payload[i] = pair;
       dict_itor_next(itor);
@@ -281,7 +301,7 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeq
   }
 }
 
-void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* neighboursDct, dict* tofDct) {
+void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* neighboursDct, tofData_t tofStorage[]) {
   // Get neighbour data
   locoId_t remoteId = rxPacket->header.sourceId;
   neighbourData_t* neighbourData = getDataForNeighbour(neighboursDct, remoteId, true);
@@ -324,7 +344,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   // Cast payload, for easier access
   payload_t* payload = (payload_t*)&(rxPacket->payload);
 
-  for(int i = 0; i < rxPacket->header.payloadLength; i++) {
+  for(unsigned int i = 0; i < rxPacket->header.payloadLength; i++) {
     if (payload[i].id == localId) {
       // TODO: Andres. See what can we use the transmitted tof for
 
@@ -352,9 +372,14 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       uint16_t tof = tofWithAntennaDelay - antennaDelay;
 
       // Store tof
-      tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, true);
       if(tof < 2000) {
+        tofData_t* tofData = findTof(tofStorage, localId, remoteId, true);
         tofData->tof = tof;
+
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+        debug.tof = tofData->tof;
+        debug.distance = calculateDistance(tofData->tof);
+#endif
       }
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
@@ -379,12 +404,9 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       debug.localRound = localRound;
       debug.localReply = localReply;
       debug.remoteReply = remoteReply;
-
-      debug.tof = tofData->tof;
-      debug.distance = calculateDistance(tofData->tof);
 #endif
     } else {
-      tofData_t* tofData = getTofDataBetween(tofDct, remoteId, payload[i].id, true);
+      tofData_t* tofData = findTof(tofStorage, remoteId, payload[i].id, true);
       tofData->tof = (uint16_t)(payload[i].tof * clockCorrection);
     }
   }
@@ -393,7 +415,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   debug.clockCorrectionCandidate = (uint32_t)(clockCorrectionCandidate * 1000000000);
   debug.clockCorrection = (uint32_t)(clockCorrection * 1000000000);
 
-  debug.dctCount = dict_count(tofDct);
+  debug.dctCount = countTof(tofStorage);
 #endif
 
   // Save the remoteTx, so we can use it to calculate the clockCorrection
@@ -401,8 +423,8 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   // Save the localRx, so we can calculate localReply when responding in the future
   neighbourData->localRx = localRx;
 
-  updatePositionOf(remoteId, neighbourData, neighboursDct, tofDct);
-  updateOwnPosition(localId, remoteId, neighbourData, neighboursDct, tofDct);
+  updatePositionOf(remoteId, neighbourData, neighboursDct, tofStorage);
+  updateOwnPosition(localId, remoteId, neighbourData, neighboursDct, tofStorage);
 
   // HACK for simulating 2D
   tofMeasurement_t tofData;
@@ -421,7 +443,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
 #endif
 }
 
-void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, dict* tofDct) {
+void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, tofData_t tofStorage[]) {
   distanceMeasurement_t distances[8];
   uint8_t distancesIndex = 0;
 
@@ -432,7 +454,7 @@ void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* n
     locoId_t neighbourId = *(locoId_t*)dict_itor_key(itor);
 
     if (remoteId != neighbourId) {
-      tofData_t* tofData = getTofDataBetween(tofDct, remoteId, neighbourId, false);
+      tofData_t* tofData = findTof(tofStorage, remoteId, neighbourId, false);
 
       if (tofData != NULL) {
         neighbourData_t* neighbourData = (neighbourData_t*)*dict_itor_datum(itor);
@@ -500,19 +522,19 @@ void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* n
     }
   }
 
-  for(int i = 0; i < distancesIndex; i++) {
+  for(unsigned int i = 0; i < distancesIndex; i++) {
     estimatorKalmanEngine.enqueueDistance(neighbourData->estimatorKalmanStorage, distances[i]);
   }
 
   estimatorKalmanEngine.update(neighbourData->estimatorKalmanStorage);
 }
 
-void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, dict* tofDct) {
+void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, tofData_t tofStorage[]) {
   if(neighbourData->estimatorKalmanStorage->isInit) {
     point_t remotePosition;
     estimatorKalmanEngine.getPosition(neighbourData->estimatorKalmanStorage, &remotePosition);
 
-    tofData_t* tofData = getTofDataBetween(tofDct, localId, remoteId, false);
+    tofData_t* tofData = findTof(tofStorage, localId, remoteId, false);
     if(tofData != NULL) {
       distanceMeasurement_t dist = {
         .distance = calculateDistance(tofData->tof),
