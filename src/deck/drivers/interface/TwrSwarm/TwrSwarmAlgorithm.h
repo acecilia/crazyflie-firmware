@@ -3,7 +3,6 @@
 
 #include "libdw1000.h"
 #include "locodeck.h"
-#include "libdict.h"
 #include "clockCorrectionStorage.h"
 #include "estimatorKalmanStorage.h"
 
@@ -40,13 +39,17 @@ typedef struct {
 typedef struct {
   lpsSwarmPacketHeader_t header;
 
-  uint8_t payload[128]; // TODO: see what is really the limit
+  // The payload, which maximum size in bytes is specified
+  payload_t payload[128 / sizeof(payload_t)]; // TODO: see what is really the limit
 } __attribute__((packed)) lpsSwarmPacket_t;
 
 /**
  A type that encapsulates the information to keep about the neighbours
  */
 typedef struct {
+  bool isInitialized;
+  locoId_t id;
+
   // Values to calculate clockCorrection
   uint64_t localRx; // To be set after reception
   uint64_t remoteTx; // To be set after reception
@@ -54,7 +57,7 @@ typedef struct {
   clockCorrectionStorage_t clockCorrectionStorage;
   uint8_t expectedSeqNr; // Expected sequence number for the received packet
 
-  estimatorKalmanStorage_t* estimatorKalmanStorage; // Used to obtain the coordinates of the neighbour
+  estimatorKalmanStorage_t estimatorKalmanStorage; // Used to obtain the position of the neighbour
 } __attribute__((packed)) neighbourData_t;
 
 /**
@@ -62,8 +65,8 @@ typedef struct {
  */
 typedef struct {
   bool isInitialized;
-
   locoIdx2_t id;
+
   uint16_t tof; // To be set after reception
 } __attribute__((packed)) tofData_t;
 

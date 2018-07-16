@@ -4,20 +4,27 @@
 #include "TwrSwarmAlgorithm.h"
 
 uint32_t calculateRandomDelayToNextTx(uint32_t averageTxDelay);
-uint32_t calculateAverageTxDelay(uint8_t numberOfNeighbours);
+uint32_t calculateAverageTxDelay(neighbourData_t neighboursStorage[]);
 
 bool verifySeqNr(const uint8_t seqNr, const uint8_t expectedSeqNr);
-locoIdx2_t getHashFromIds(const locoId_t id1, const locoId_t id2);
+
 void initRandomizationEngine(dwDevice_t *dev);
 locoId_t generateId(void);
-locoId_t generateIdNotIn(lpsSwarmPacket_t* packet, dict* dct);
+locoId_t generateIdNotInPacket(neighbourData_t neighboursStorage[], lpsSwarmPacket_t* packet);
+locoIdx2_t getHashFromIds(const locoId_t id1, const locoId_t id2);
+
 void adjustTxRxTime(dwTime_t *time);
 dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev);
-tofData_t* findTof(tofData_t tofStorage[], const locoId_t id1, const locoId_t id2, const bool insertIfNotFound);
-neighbourData_t* getDataForNeighbour(dict* dct, const locoId_t id, const bool insertIfNotFound);
+
+tofData_t* findTofData(tofData_t storage[], const locoId_t id1, const locoId_t id2, const bool insertIfNotFound);
+unsigned int countTof(tofData_t storage[]);
+neighbourData_t* findNeighbourData(neighbourData_t storage[], const locoId_t id, const bool insertIfNotFound);
+unsigned int countNeighbours(neighbourData_t storage[]);
+
 unsigned int calculatePacketSize(lpsSwarmPacket_t* packet);
-void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeqNr, dict* neighbourDct, tofData_t tofStorage[]);
-void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, dict* neighboursDct, tofData_t tofStorage[]);
-void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, tofData_t tofStorage[]);
-void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, dict* neighboursDct, tofData_t tofStorage[]);
+void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeqNr, neighbourData_t neighboursStorage[], tofData_t tofStorage[]);
+void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, const uint16_t antennaDelay, neighbourData_t neighboursStorage[], tofData_t tofStorage[]);
+
+void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, neighbourData_t neighboursStorage[], tofData_t tofStorage[]);
+void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, tofData_t tofStorage[]);
 #endif /* TwrSwarmAlgorithmBlocks_h */

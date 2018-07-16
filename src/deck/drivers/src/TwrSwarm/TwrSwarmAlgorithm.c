@@ -8,6 +8,12 @@
 
 #include "debug.h"
 
+// TODO: remove and do it smarter
+#define ANTENNA_OFFSET_METERS 154.6
+#define ANTENNA_DELAY (uint16_t)((ANTENNA_OFFSET_METERS * LOCODECK_TS_FREQ) / SPEED_OF_LIGHT)
+#define ANTENNA_ACCEPTED_NOISE_ERROR 100
+uint16_t antennaDelay = ANTENNA_DELAY;
+
 static lpsSwarmPacket_t packet;
 
 /**
@@ -16,24 +22,22 @@ static lpsSwarmPacket_t packet;
 static struct {
   dwDevice_t* dev; // Needed when sending tx packets at random times
 
-  dict* neighboursDct;
+  neighbourData_t neighboursStorage[NEIGHBOUR_STORAGE_CAPACITY];
   tofData_t tofStorage[TOF_STORAGE_CAPACITY];
 
   locoId_t localId;
   uint8_t nextTxSeqNr; // Local sequence number of the transmitted packets
 
-  // Add packet sequence number
-
   uint32_t timeOfNextTx;
   uint32_t averageTxDelay;
 
-  xTimerHandle logTimer;
+  xTimerHandle timer;
 } ctx;
 
 /* Helpers */
 /**********************************/
 
-static void setupRx(dwDevice_t *dev) {
+static void setRxMode(dwDevice_t *dev) {
   dwNewReceive(dev);
   dwSetDefaults(dev);
   dwStartReceive(dev);
@@ -50,19 +54,19 @@ static uint32_t now() {
  */
 static void timerCallback(xTimerHandle timer) {
   // Adjust average tx delay based on the number of known drones around
-  uint8_t numberOfNeighbours = dict_count(ctx.neighboursDct);
-  ctx.averageTxDelay = calculateAverageTxDelay(numberOfNeighbours);
+  ctx.averageTxDelay = calculateAverageTxDelay(ctx.neighboursStorage);
 }
 
 /**
  Initialize all the required variables of the algorithm
  */
 static void init(dwDevice_t *dev) {
-  configure_dict_malloc();
   initRandomizationEngine(dev);
 
-  // Initialize the context
-  ctx.neighboursDct = hashtable2_dict_new(dict_uint8_cmp, dict_uint8_hash, 10); // Dictionary storing the neighbours data
+  // Initialize neighbours storage
+  for(unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
+    ctx.neighboursStorage[i].isInitialized = false;
+  }
 
   // Initialize tof storage
   for(unsigned int i = 0; i < TOF_STORAGE_CAPACITY; i++) {
@@ -79,8 +83,8 @@ static void init(dwDevice_t *dev) {
   ctx.timeOfNextTx = calculateRandomDelayToNextTx(ctx.averageTxDelay);
 
   // Timer to execute actions periodically
-  ctx.logTimer = xTimerCreate("timer", M2T(1000), pdTRUE, NULL, timerCallback);
-  xTimerStart(ctx.logTimer, 0);
+  ctx.timer = xTimerCreate("timer", M2T(1000), pdTRUE, NULL, timerCallback);
+  xTimerStart(ctx.timer, 0);
 }
 
 /**
@@ -93,7 +97,7 @@ static void transmit(dwDevice_t *dev) {
 
   lpsSwarmPacket_t* txPacket = &packet;
 
-  setTxData(txPacket, ctx.localId, &ctx.nextTxSeqNr, ctx.neighboursDct, ctx.tofStorage);
+  setTxData(txPacket, ctx.localId, &ctx.nextTxSeqNr, ctx.neighboursStorage, ctx.tofStorage);
   unsigned int packetSize = calculatePacketSize(txPacket);
 
   // Set tx time inside txPacket
@@ -118,13 +122,13 @@ static void transmit(dwDevice_t *dev) {
 static void handleRxPacket(dwDevice_t *dev) {
   // Makes sure the id is unique among the neighbours around, and regenerate it only if the local ranging information is less than the information coming on the packet
   if (packet.header.sourceId == ctx.localId) {
-    ctx.localId = generateIdNotIn(&packet, ctx.neighboursDct);
+    ctx.localId = generateIdNotInPacket(ctx.neighboursStorage, &packet);
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
     debug.idFailure++;
 #endif
   }
 
-  processRxPacket(dev, ctx.localId, &packet, ctx.neighboursDct, ctx.tofStorage);
+  processRxPacket(dev, ctx.localId, &packet, antennaDelay, ctx.neighboursStorage, ctx.tofStorage);
 }
 
 /**
@@ -140,7 +144,7 @@ static uint32_t onEvent(dwDevice_t *dev, uwbEvent_t event) {
   }
 
   // Configure the DW1000 for Rx before processing the event: we want the chip on Rx mode as much time as possible, to avoid losing packets
-  setupRx(dev);
+  setRxMode(dev);
 
   // Process the event
   if (event == eventPacketReceived && dataLength > 0) {

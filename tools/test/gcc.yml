@@ -32,6 +32,8 @@ compiler:
       - 'src/utils/src/clockCorrection/'
       - 'src/utils/interface/randomizedTimer/'
       - 'src/utils/src/randomizedTimer/'
+      - 'src/utils/interface/estimatorKalman/'
+      - 'src/utils/src/estimatorKalman/'
       - 'src/deck/drivers/interface/TwrSwarm/'
       - 'src/deck/drivers/src/TwrSwarm/'
       - 'src/utils/interface/'

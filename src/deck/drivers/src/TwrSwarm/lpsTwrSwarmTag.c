@@ -47,8 +47,7 @@
 
 static bool rangingOk;
 
-static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
-{
+static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event) {
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
   debug.blink(LED_BLUE_L);
 
@@ -75,8 +74,7 @@ static uint32_t twrTagOnEvent(dwDevice_t *dev, uwbEvent_t event)
   return twrSwarmAlgorithm.onEvent(dev, event);
 }
 
-static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
-{
+static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions) {
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
   debug.init();
 #endif
@@ -88,8 +86,7 @@ static void twrTagInit(dwDevice_t *dev, lpsAlgoOptions_t* algoOptions)
   twrSwarmAlgorithm.init(dev);
 }
 
-static bool isRangingOk()
-{
+static bool isRangingOk() {
   return rangingOk;
 }
 
