@@ -421,8 +421,6 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   neighbourData->localRx = localRx;
 
   updatePositionOf(neighbourData, neighboursStorage, tofStorage);
-  return; // To remove
-
   updateOwnPosition(localId, remoteId, neighbourData, tofStorage);
 
   // HACK for simulating 2D

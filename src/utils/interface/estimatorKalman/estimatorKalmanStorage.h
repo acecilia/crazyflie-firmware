@@ -47,6 +47,6 @@ typedef struct {
   // Internal variables
   bool isInit;
   uint32_t lastProcessNoiseUpdate;
-} __attribute__((packed)) estimatorKalmanStorage_t;
+} estimatorKalmanStorage_t;
 
 #endif /* estimatorKalmanStorage_h */

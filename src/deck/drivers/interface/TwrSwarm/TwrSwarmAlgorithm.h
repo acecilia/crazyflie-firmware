@@ -58,7 +58,7 @@ typedef struct {
   uint8_t expectedSeqNr; // Expected sequence number for the received packet
 
   estimatorKalmanStorage_t estimatorKalmanStorage; // Used to obtain the position of the neighbour
-} __attribute__((packed)) neighbourData_t;
+} neighbourData_t;
 
 /**
  A type that encapsulates the information to keep track of the tof
@@ -68,7 +68,7 @@ typedef struct {
   locoIdx2_t id;
 
   uint16_t tof; // To be set after reception
-} __attribute__((packed)) tofData_t;
+} tofData_t;
 
 typedef struct {
   void (*init)(dwDevice_t *dev);

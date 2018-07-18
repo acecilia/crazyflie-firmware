@@ -30,7 +30,7 @@ static struct {
   uint32_t averageTxDelay;
 
   xTimerHandle timer;
-} __attribute__((packed)) ctx;
+} ctx;
 
 /* Helpers */
 /**********************************/
