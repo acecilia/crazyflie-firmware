@@ -20,8 +20,6 @@ static lpsSwarmPacket_t packet;
  A type that encapsulates all the required global values of the algorithm
  */
 static struct {
-  dwDevice_t* dev; // Needed when sending tx packets at random times
-
   neighbourData_t neighboursStorage[NEIGHBOUR_STORAGE_CAPACITY];
   tofData_t tofStorage[TOF_STORAGE_CAPACITY];
 
@@ -32,7 +30,7 @@ static struct {
   uint32_t averageTxDelay;
 
   xTimerHandle timer;
-} ctx;
+} __attribute__((packed)) ctx;
 
 /* Helpers */
 /**********************************/
