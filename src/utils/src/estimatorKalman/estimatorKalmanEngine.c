@@ -537,8 +537,8 @@ static void update(estimatorKalmanStorage_t* storage) {
   /**
    * Add process noise every loop, rather than every prediction
    */
-  addProcessNoise(storage, (float)(tick - storage->lastPNUpdate) / configTICK_RATE_HZ);
-  storage->lastPNUpdate = tick;
+  addProcessNoise(storage, (float)(tick - storage->lastProcessNoiseUpdate) / configTICK_RATE_HZ);
+  storage->lastProcessNoiseUpdate = tick;
 
   /**
    * Sensor measurements can come in sporadically and faster than the stabilizer loop frequency,

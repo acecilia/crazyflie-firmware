@@ -420,8 +420,9 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   // Save the localRx, so we can calculate localReply when responding in the future
   neighbourData->localRx = localRx;
 
-  /*
-  updatePositionOf(remoteId, neighbourData, neighboursStorage, tofStorage);
+  updatePositionOf(neighbourData, neighboursStorage, tofStorage);
+  return; // To remove
+
   updateOwnPosition(localId, remoteId, neighbourData, tofStorage);
 
   // HACK for simulating 2D
@@ -439,26 +440,22 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   }
   estimatorKalmanGetEstimatedPos(&debug.position);
 #endif
-   */
 }
 
-void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
+void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
   distanceMeasurement_t distances[NEIGHBOUR_STORAGE_CAPACITY];
   uint8_t distancesIndex = 0;
 
+  // Get all the positions and distances from the drone we want to update position, to the rest of them
   for (unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
-    neighbourData_t* neighbourData = &neighboursStorage[i];
-
-    if (neighbourData->isInitialized) {
-      locoId_t neighbourId = neighbourData->id;
-
-      if(remoteId != neighbourId) {
-        tofData_t* tofData = findTofData(tofStorage, remoteId, neighbourId, false);
+    if (neighboursStorage[i].isInitialized) {
+      if(neighbourData->id != neighboursStorage[i].id) {
+        tofData_t* tofData = findTofData(tofStorage, neighbourData->id, neighboursStorage[i].id, false);
 
         if (tofData != NULL) {
-          if(neighbourData->estimatorKalmanStorage.isInit) {
+          if(neighboursStorage[i].estimatorKalmanStorage.isInit) {
             point_t positionData;
-            estimatorKalmanEngine.getPosition(&neighbourData->estimatorKalmanStorage, &positionData);
+            estimatorKalmanEngine.getPosition(&neighboursStorage[i].estimatorKalmanStorage, &positionData);
 
             distances[distancesIndex].x = positionData.x;
             distances[distancesIndex].y = positionData.y;
@@ -474,6 +471,7 @@ void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, neighbo
 
   unsigned int neighbours = countNeighbours(neighboursStorage);
 
+  // Give the initial position of the drone
   if(!neighbourData->estimatorKalmanStorage.isInit) {
     const velocity_t initialVelocity = { .x = 0, .y = 0, .z = 0 };
     if(neighbours == 1) {
@@ -501,16 +499,16 @@ void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, neighbo
       point_t initialPosition = { .x = 0, .y = 0, .z = 0 };
       estimatorKalmanEngine.init(&neighbourData->estimatorKalmanStorage, initialPosition, initialVelocity);
     } else {
-      // There are not enough distances to calculate the position
-      // DEBUG_PRINT("Neighbours: %d | distances: %d\n", neighbours, distancesIndex);
-      // configASSERT(false);
-      // TODO: next cases
+      // There are not enough distances to calculate the position, and without an itialized estimatorKalmanStorage we can not continue
       return;
     }
   }
 
+  // Assume some position values while building the coordinate system
   if(true /* is building the coordinate system*/) {
-    if(neighbours == 2) {
+    if(neighbours == 1) {
+      // Already set an initial position of (0, 0, 0)
+    } if(neighbours == 2) {
       // Simulate 1D
       positionMeasurement_t position = { .x = NAN, .y = 0, .z = 0, .stdDev = 0 };
       estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, position);
@@ -521,10 +519,12 @@ void updatePositionOf(locoId_t remoteId, neighbourData_t* neighbourData, neighbo
     }
   }
 
+  // Pass the known data to the estimator and enqueue it, so it can calculate the position in the next update
   for(unsigned int i = 0; i < distancesIndex; i++) {
     estimatorKalmanEngine.enqueueDistance(&neighbourData->estimatorKalmanStorage, distances[i]);
   }
 
+  // Use all the enqueued data to calculate the position
   estimatorKalmanEngine.update(&neighbourData->estimatorKalmanStorage);
 }
 
