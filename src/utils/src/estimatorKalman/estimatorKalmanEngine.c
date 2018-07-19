@@ -735,7 +735,7 @@ static void update(estimatorKalmanStorage_t* storage) {
    * Prediction step + noise addition
    */
 
-  float dt = (float)((tick - storage->lastProcessNoiseUpdate) / configTICK_RATE_HZ);
+  float dt = (float)((tick - storage->lastUpdate) / configTICK_RATE_HZ);
 
   Axis3f acceleration = {.x = 0, .y = 0, .z = 0 };
   bool accelerationDataReceived = false;
@@ -786,7 +786,7 @@ static void update(estimatorKalmanStorage_t* storage) {
   finalize(storage);
 
   // Save state to the storage
-  storage->lastProcessNoiseUpdate = tick;
+  storage->lastUpdate = tick;
 
   stateEstimatorAssertNotNaN(storage);
 }
