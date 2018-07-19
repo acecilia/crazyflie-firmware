@@ -128,6 +128,46 @@ static void decoupleState(estimatorKalmanStorage_t* storage, stateIdx_t state) {
 }
 #endif
 
+/*****************************************/
+// Temporary matrices used for calculations. Declared static for better usage of the memory: if not static, the stack may be too small for storing them, and stack overflow may occur
+/*****************************************/
+
+// Used in the scalarUpdate function
+/*****************************************/
+
+// The Kalman gain as a column vector: the K parameter in the kalman filter update function
+static float K[STATE_DIM];
+static arm_matrix_instance_f32 Km = {STATE_DIM, 1, (float *)K};
+
+// The H' parameter in the kalman filter update function (transposed)
+static float Htd[STATE_DIM * 1];
+static arm_matrix_instance_f32 Htm = {STATE_DIM, 1, Htd};
+
+// The PH' parameter in the kalman filter update function (with H transposed)
+static float PHtd[STATE_DIM * 1];
+static arm_matrix_instance_f32 PHtm = {STATE_DIM, 1, PHtd};
+
+// Used in the finalize function
+/*****************************************/
+
+// Matrix to rotate the attitude covariances once updated
+static float A[STATE_DIM][STATE_DIM];
+static arm_matrix_instance_f32 Am = {STATE_DIM, STATE_DIM, (float *)A};
+
+// Temporary matrices for the covariance updates
+/*****************************************/
+
+static float tmpNN1d[STATE_DIM * STATE_DIM];
+static arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
+
+static float tmpNN2d[STATE_DIM * STATE_DIM];
+static arm_matrix_instance_f32 tmpNN2m = {STATE_DIM, STATE_DIM, tmpNN2d};
+
+static float tmpNN3d[STATE_DIM * STATE_DIM];
+static arm_matrix_instance_f32 tmpNN3m = {STATE_DIM, STATE_DIM, tmpNN3d};
+
+/*****************************************/
+
 /*
  * Main Kalman Filter functions
  */
@@ -277,50 +317,24 @@ static void init(estimatorKalmanStorage_t* storage, const point_t initialPositio
 }
 
 static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise) {
-  /*****************************************/
-  // Temporary matrices used for calculations. Declared static for better usage of the memory (if not static, the stack may be too small for storing them, and stack overflow may occur)
-  /*****************************************/
-
-  // The Kalman gain as a column vector
-  static float K[STATE_DIM];
-  static arm_matrix_instance_f32 Km = {STATE_DIM, 1, (float *)K};
-
-  // Temporary matrices for the covariance updates
-  static float tmpNN1d[STATE_DIM * STATE_DIM];
-  static arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
-
-  static float tmpNN2d[STATE_DIM * STATE_DIM];
-  static arm_matrix_instance_f32 tmpNN2m = {STATE_DIM, STATE_DIM, tmpNN2d};
-
-  static float tmpNN3d[STATE_DIM * STATE_DIM];
-  static arm_matrix_instance_f32 tmpNN3m = {STATE_DIM, STATE_DIM, tmpNN3d};
-
-  static float HTd[STATE_DIM * 1];
-  static arm_matrix_instance_f32 HTm = {STATE_DIM, 1, HTd};
-
-  static float PHTd[STATE_DIM * 1];
-  static arm_matrix_instance_f32 PHTm = {STATE_DIM, 1, PHTd};
-
-  /*****************************************/
-
   configASSERT(Hm->numRows == 1);
   configASSERT(Hm->numCols == STATE_DIM);
 
   // ====== INNOVATION COVARIANCE ======
 
-  mat_trans(Hm, &HTm);
-  mat_mult(&storage->Pm, &HTm, &PHTm); // PH'
-  float R = powf(stdMeasNoise, 2);
-  float HPHR = R; // HPH' + R
+  mat_trans(Hm, &Htm);
+  mat_mult(&storage->Pm, &Htm, &PHtm); // PH'
+  float HPHt = 0; // HPH'
   for (int i=0; i<STATE_DIM; i++) { // Add the element of HPH' to the above
-    HPHR += Hm->pData[i]*PHTd[i]; // this obviously only works if the update is scalar (as in this function)
+    HPHt += Hm->pData[i]*PHtd[i]; // this obviously only works if the update is scalar (as in this function)
   }
-  configASSERT(!isnan(HPHR));
+  configASSERT(!isnan(HPHt));
 
   // ====== MEASUREMENT UPDATE ======
   // Calculate the Kalman gain and perform the state update
+  float R = powf(stdMeasNoise, 2);
   for (int i=0; i<STATE_DIM; i++) {
-    K[i] = PHTd[i]/HPHR; // kalman gain = (PH' (HPH' + R )^-1)
+    K[i] = PHtd[i]/(HPHt + R); // kalman gain = (PH' (HPH' + R )^-1)
     storage->S[i] = storage->S[i] + K[i] * error; // state update
   }
   stateEstimatorAssertNotNaN(storage);
@@ -389,23 +403,6 @@ static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasur
 }
 
 static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
-  /*****************************************/
-  // Temporary matrices used for calculations. Declared static for better usage of the memory (if not static, the stack may be too small for storing them, and stack overflow may occur)
-  /*****************************************/
-
-  // Matrix to rotate the attitude covariances once updated
-  static float A[STATE_DIM][STATE_DIM];
-  static arm_matrix_instance_f32 Am = {STATE_DIM, STATE_DIM, (float *)A};
-
-  // Temporary matrices for the covariance updates
-  static float tmpNN1d[STATE_DIM * STATE_DIM];
-  static arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
-
-  static float tmpNN2d[STATE_DIM * STATE_DIM];
-  static arm_matrix_instance_f32 tmpNN2m = {STATE_DIM, STATE_DIM, tmpNN2d};
-
-  /*****************************************/
-
   // Incorporate the attitude error (Kalman filter state) with the attitude
   float v0 = storage->S[STATE_D0];
   float v1 = storage->S[STATE_D1];
