@@ -26,15 +26,18 @@
 #define MIN_COVARIANCE (1e-6f)
 
 // The bounds on states, these shouldn't be hit...
-#define MAX_POSITION (100) //meters
-#define MAX_VELOCITY (10) //meters per second
+#define MAX_POSITION (100) // Meters
+#define MAX_VELOCITY (10)  // Meters per second
 
+/*
 // Initial variances, uncertain of position, but know we're stationary and roughly flat
+// NOTE: only here as a reference. This values should not be used as static variables, but they should be passed to the filter as arguments in the init function
 static const float stdDevInitialPosition_xy = 100;
 static const float stdDevInitialPosition_z = 1;
 static const float stdDevInitialVelocity = 0.01;
 static const float stdDevInitialAttitude_rollpitch = 0.01;
 static const float stdDevInitialAttitude_yaw = 0.01;
+*/
 
 static float procNoiseAcc_xy = 0.5f;
 static float procNoiseAcc_z = 1.0f;
@@ -223,7 +226,7 @@ static inline bool hasPositionData(estimatorKalmanStorage_t* storage, positionMe
  * Main Kalman Filter functions
  */
 
-static void init(estimatorKalmanStorage_t* storage, const point_t initialPosition, const velocity_t initialVelocity) {
+static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitude) {
   // Reset the queues
   if (!storage->isInit) {
     storage->accelerationDataQueue = xQueueCreate(ACCELERATION_QUEUE_LENGTH, sizeof(Axis3f));
@@ -239,15 +242,15 @@ static void init(estimatorKalmanStorage_t* storage, const point_t initialPositio
 
   // Initialize the state
   // TODO: Can we initialize this more intelligently?
-  storage->S[STATE_X] = initialPosition.x;
-  storage->S[STATE_Y] = initialPosition.y;
-  storage->S[STATE_Z] = initialPosition.z;
-  storage->S[STATE_PX] = initialVelocity.z;
-  storage->S[STATE_PY] = initialVelocity.y;
-  storage->S[STATE_PZ] = initialVelocity.z;
-  storage->S[STATE_D0] = 0;
-  storage->S[STATE_D1] = 0;
-  storage->S[STATE_D2] = 0;
+  storage->S[STATE_X] = initialPosition->value.x;
+  storage->S[STATE_Y] = initialPosition->value.y;
+  storage->S[STATE_Z] = initialPosition->value.z;
+  storage->S[STATE_PX] = initialVelocity->value.z;
+  storage->S[STATE_PY] = initialVelocity->value.y;
+  storage->S[STATE_PZ] = initialVelocity->value.z;
+  storage->S[STATE_D0] = initialAttitude->value.x;
+  storage->S[STATE_D1] = initialAttitude->value.y;
+  storage->S[STATE_D2] = initialAttitude->value.z;
 
   // Initialize the attitude quaternion
   for(int i=0; i<3; i++) {
@@ -269,17 +272,17 @@ static void init(estimatorKalmanStorage_t* storage, const point_t initialPositio
   }
 
   // Initialize state variances
-  storage->P[STATE_X][STATE_X] = powf(stdDevInitialPosition_xy, 2);
-  storage->P[STATE_Y][STATE_Y] = powf(stdDevInitialPosition_xy, 2);
-  storage->P[STATE_Z][STATE_Z] = powf(stdDevInitialPosition_z, 2);
+  storage->P[STATE_X][STATE_X] = powf(initialPosition->stdDev.x, 2);
+  storage->P[STATE_Y][STATE_Y] = powf(initialPosition->stdDev.y, 2);
+  storage->P[STATE_Z][STATE_Z] = powf(initialPosition->stdDev.z, 2);
 
-  storage->P[STATE_PX][STATE_PX] = powf(stdDevInitialVelocity, 2);
-  storage->P[STATE_PY][STATE_PY] = powf(stdDevInitialVelocity, 2);
-  storage->P[STATE_PZ][STATE_PZ] = powf(stdDevInitialVelocity, 2);
+  storage->P[STATE_PX][STATE_PX] = powf(initialVelocity->stdDev.x, 2);
+  storage->P[STATE_PY][STATE_PY] = powf(initialVelocity->stdDev.y, 2);
+  storage->P[STATE_PZ][STATE_PZ] = powf(initialVelocity->stdDev.z, 2);
 
-  storage->P[STATE_D0][STATE_D0] = powf(stdDevInitialAttitude_rollpitch, 2);
-  storage->P[STATE_D1][STATE_D1] = powf(stdDevInitialAttitude_rollpitch, 2);
-  storage->P[STATE_D2][STATE_D2] = powf(stdDevInitialAttitude_yaw, 2);
+  storage->P[STATE_D0][STATE_D0] = powf(initialAttitude->stdDev.x, 2);
+  storage->P[STATE_D1][STATE_D1] = powf(initialAttitude->stdDev.y, 2);
+  storage->P[STATE_D2][STATE_D2] = powf(initialAttitude->stdDev.z, 2);
 
   // Initialize covariance matrix
   storage->Pm = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->P };

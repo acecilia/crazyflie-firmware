@@ -6,22 +6,15 @@
 #include "estimatorKalmanStorage.h"
 
 /**
- A x,y,z vector with an associated standard deviation
+ A x,y,z vector with an associated standard deviation per axis
  */
 typedef struct {
-  union {
-    struct {
-      float x;
-      float y;
-      float z;
-    };
-    float axis[3];
-  };
-  float stdDev;
+  Axis3f value;
+  Axis3f stdDev;
 } vec3Measurement_t;
 
 typedef struct {
-  void (*init)(estimatorKalmanStorage_t* storage, const point_t initialPosition, const velocity_t initialVelocity);
+  void (*init)(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitude);
   void (*update)(estimatorKalmanStorage_t* storage);
 
   // Incorporation of additional data
