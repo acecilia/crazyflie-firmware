@@ -45,21 +45,6 @@ static float measNoiseGyro_rollpitch = 0.1f; // radians per second
 static float measNoiseGyro_yaw = 0.1f; // radians per second
 
 /**
- * Queue related
- */
-
-#define POS_QUEUE_LENGTH (10)
-#define DIST_QUEUE_LENGTH (10)
-
-static inline bool hasDistanceMeasurement(estimatorKalmanStorage_t* storage, distanceMeasurement_t *dist) {
-  return (pdTRUE == xQueueReceive(storage->distDataQueue, dist, 0));
-}
-
-static inline bool hasPositionMeasurement(estimatorKalmanStorage_t* storage, positionMeasurement_t *pos) {
-  return (pdTRUE == xQueueReceive(storage->posDataQueue, pos, 0));
-}
-
-/**
  * Supporting and utility functions
  */
 
@@ -73,15 +58,20 @@ static inline void mat_mult(const arm_matrix_instance_f32 * pSrcA, const arm_mat
   configASSERT(ARM_MATH_SUCCESS == arm_mat_mult_f32(pSrcA, pSrcB, pDst));
 }
 static inline float arm_sqrt(float32_t in) {
-  float pOut = 0;
-  arm_status result = arm_sqrt_f32(in, &pOut);
-  configASSERT(ARM_MATH_SUCCESS == result);
-  return pOut;
+  if(in == 0) {
+    return 0;
+  } else {
+    float pOut = 0;
+    arm_status result = arm_sqrt_f32(in, &pOut);
+    configASSERT(ARM_MATH_SUCCESS == result);
+    return pOut;
+  }
 }
 
-/*
+/**
  * Other functions
  */
+
 #define KALMAN_NAN_CHECK
 #ifdef KALMAN_NAN_CHECK
 static void stateEstimatorAssertNotNaN(estimatorKalmanStorage_t* storage) {
@@ -128,12 +118,12 @@ static void decoupleState(estimatorKalmanStorage_t* storage, stateIdx_t state) {
 }
 #endif
 
-/*****************************************/
-// Temporary matrices used for calculations. Declared static for better usage of the memory: if not static, the stack may be too small for storing them, and stack overflow may occur
-/*****************************************/
+/******************************************
+ * Temporary matrices used for calculations. Declared static for better usage of the memory: if not static, the stack may be too small for storing them, and stack overflow may occur
+ *****************************************/
 
-// Used in the scalarUpdate function
-/*****************************************/
+/* Used in the scalarUpdate function
+ *****************************************/
 
 // The Kalman gain as a column vector: the K parameter in the kalman filter update function
 static float K[STATE_DIM];
@@ -147,15 +137,15 @@ static arm_matrix_instance_f32 Htm = {STATE_DIM, 1, Htd};
 static float PHtd[STATE_DIM * 1];
 static arm_matrix_instance_f32 PHtm = {STATE_DIM, 1, PHtd};
 
-// Used in the finalize function
-/*****************************************/
+/* Used in the finalize function
+ *****************************************/
 
 // Matrix to rotate the attitude covariances once updated
 static float A[STATE_DIM][STATE_DIM];
 static arm_matrix_instance_f32 Am = {STATE_DIM, STATE_DIM, (float *)A};
 
-// Temporary matrices for the covariance updates
-/*****************************************/
+/* Temporary matrices for the covariance updates
+ *****************************************/
 
 static float tmpNN1d[STATE_DIM * STATE_DIM];
 static arm_matrix_instance_f32 tmpNN1m = {STATE_DIM, STATE_DIM, tmpNN1d};
@@ -168,102 +158,83 @@ static arm_matrix_instance_f32 tmpNN3m = {STATE_DIM, STATE_DIM, tmpNN3d};
 
 /*****************************************/
 
-/*
- * Main Kalman Filter functions
+/**
+ * Queues to add data to the filter
  */
 
-static void getPosition(const estimatorKalmanStorage_t* storage, point_t* position) {
-  ASSERT(storage->isInit);
+#define ACCELERATION_QUEUE_LENGTH (10)
+#define ANGULAR_VELOCITY_QUEUE_LENGTH (10)
+#define POSITION_QUEUE_LENGTH (10)
+#define DISTANCE_QUEUE_LENGTH (10)
 
-  position->x = storage->S[STATE_X];
-  position->y = storage->S[STATE_Y];
-  position->z = storage->S[STATE_Z];
-}
+static bool enqueueData(xQueueHandle queue, const void* data) {
+  portBASE_TYPE result;
+  bool isInInterrupt = (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
 
-static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
-  ASSERT(storage->isInit);
-
-  uint32_t tick = xTaskGetTickCount();
-
-  // position state is already in world frame
-  state->position = (point_t){
-    .timestamp = tick,
-    .x = storage->S[STATE_X],
-    .y = storage->S[STATE_Y],
-    .z = storage->S[STATE_Z]
-  };
-
-  // velocity is in body frame and needs to be rotated to world frame
-  state->velocity = (velocity_t){
-    .timestamp = tick,
-    .x = storage->R[0][0]*storage->S[STATE_PX] + storage->R[0][1]*storage->S[STATE_PY] + storage->R[0][2]*storage->S[STATE_PZ],
-    .y = storage->R[1][0]*storage->S[STATE_PX] + storage->R[1][1]*storage->S[STATE_PY] + storage->R[1][2]*storage->S[STATE_PZ],
-    .z = storage->R[2][0]*storage->S[STATE_PX] + storage->R[2][1]*storage->S[STATE_PY] + storage->R[2][2]*storage->S[STATE_PZ]
-  };
-
-  // convert the new attitude into Euler YPR
-  float yaw = atan2f(2*(storage->q[1]*storage->q[2]+storage->q[0]*storage->q[3]) , powf(storage->q[0], 2) + powf(storage->q[1], 2) - powf(storage->q[2], 2) - powf(storage->q[3], 2));
-  float pitch = asinf(-2*(storage->q[1]*storage->q[3] - storage->q[0]*storage->q[2]));
-  float roll = atan2f(2*(storage->q[2]*storage->q[3]+storage->q[0]*storage->q[1]) , powf(storage->q[0], 2) - powf(storage->q[1], 2) - powf(storage->q[2], 2) + powf(storage->q[3], 2));
-
-  // Save attitude, adjusted for the legacy CF2 body coordinate system
-  state->attitude = (attitude_t){
-    .timestamp = tick,
-    .roll = roll*RAD_TO_DEG,
-    .pitch = -pitch*RAD_TO_DEG,
-    .yaw = yaw*RAD_TO_DEG
-  };
-
-  // Save quaternion, hopefully one day this could be used in a better controller.
-  // Note that this is not adjusted for the legacy coordinate system
-  state->attitudeQuaternion = (quaternion_t){
-    .timestamp = tick,
-    .w = storage->q[0],
-    .x = storage->q[1],
-    .y = storage->q[2],
-    .z = storage->q[3]
-  };
-}
-
-static void addProcessNoise(estimatorKalmanStorage_t* storage, float dt) {
-  if (dt > 0) {
-    storage->P[STATE_X][STATE_X] += powf(procNoiseAcc_xy*dt*dt + procNoiseVel*dt + procNoisePos, 2); // add process noise on position
-    storage->P[STATE_Y][STATE_Y] += powf(procNoiseAcc_xy*dt*dt + procNoiseVel*dt + procNoisePos, 2); // add process noise on position
-    storage->P[STATE_Z][STATE_Z] += powf(procNoiseAcc_z*dt*dt + procNoiseVel*dt + procNoisePos, 2); // add process noise on position
-
-    storage->P[STATE_PX][STATE_PX] += powf(procNoiseAcc_xy*dt + procNoiseVel, 2); // add process noise on velocity
-    storage->P[STATE_PY][STATE_PY] += powf(procNoiseAcc_xy*dt + procNoiseVel, 2); // add process noise on velocity
-    storage->P[STATE_PZ][STATE_PZ] += powf(procNoiseAcc_z*dt + procNoiseVel, 2); // add process noise on velocity
-
-    storage->P[STATE_D0][STATE_D0] += powf(measNoiseGyro_rollpitch * dt + procNoiseAtt, 2);
-    storage->P[STATE_D1][STATE_D1] += powf(measNoiseGyro_rollpitch * dt + procNoiseAtt, 2);
-    storage->P[STATE_D2][STATE_D2] += powf(measNoiseGyro_yaw * dt + procNoiseAtt, 2);
-  }
-
-  for (int i=0; i<STATE_DIM; i++) {
-    for (int j=i; j<STATE_DIM; j++) {
-      float p = 0.5f*storage->P[i][j] + 0.5f*storage->P[j][i];
-      if (isnan(p) || p > MAX_COVARIANCE) {
-        storage->P[i][j] = storage->P[j][i] = MAX_COVARIANCE;
-      } else if ( i==j && p < MIN_COVARIANCE ) {
-        storage->P[i][j] = storage->P[j][i] = MIN_COVARIANCE;
-      } else {
-        storage->P[i][j] = storage->P[j][i] = p;
-      }
+  if (isInInterrupt) {
+    portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+    result = xQueueSendFromISR(queue, data, &xHigherPriorityTaskWoken);
+    if(xHigherPriorityTaskWoken == pdTRUE) {
+      portYIELD();
     }
+  } else {
+    result = xQueueSend(queue, data, 0);
   }
-
-  stateEstimatorAssertNotNaN(storage);
+  return (result == pdTRUE);
 }
+
+static bool enqueueAcceleration(const estimatorKalmanStorage_t* storage, const Axis3f* acceleration) {
+  ASSERT(storage->isInit);
+  return enqueueData(storage->positionDataQueue, (void*)acceleration);
+}
+
+static bool enqueueAngularVelocity(const estimatorKalmanStorage_t* storage, const Axis3f* angularVelocity) {
+  ASSERT(storage->isInit);
+  return enqueueData(storage->distanceDataQueue, (void*)angularVelocity);
+}
+
+static bool enqueuePosition(const estimatorKalmanStorage_t* storage, const positionMeasurement_t* position) {
+  ASSERT(storage->isInit);
+  return enqueueData(storage->positionDataQueue, (void*)position);
+}
+
+static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance) {
+  ASSERT(storage->isInit);
+  return enqueueData(storage->distanceDataQueue, (void*)distance);
+}
+
+static inline bool hasAccelerationData(estimatorKalmanStorage_t* storage, Axis3f* acceleration) {
+  return (pdTRUE == xQueueReceive(storage->accelerationDataQueue, acceleration, 0));
+}
+
+static inline bool hasAngularVelocityData(estimatorKalmanStorage_t* storage, Axis3f* angularVelocity) {
+  return (pdTRUE == xQueueReceive(storage->angularVelocityDataQueue, angularVelocity, 0));
+}
+
+static inline bool hasDistanceData(estimatorKalmanStorage_t* storage, distanceMeasurement_t* distance) {
+  return (pdTRUE == xQueueReceive(storage->distanceDataQueue, distance, 0));
+}
+
+static inline bool hasPositionData(estimatorKalmanStorage_t* storage, positionMeasurement_t* position) {
+  return (pdTRUE == xQueueReceive(storage->positionDataQueue, position, 0));
+}
+
+/**
+ * Main Kalman Filter functions
+ */
 
 static void init(estimatorKalmanStorage_t* storage, const point_t initialPosition, const velocity_t initialVelocity) {
   // Reset the queues
   if (!storage->isInit) {
-    storage->posDataQueue = xQueueCreate(POS_QUEUE_LENGTH, sizeof(positionMeasurement_t));
-    storage->distDataQueue = xQueueCreate(DIST_QUEUE_LENGTH, sizeof(distanceMeasurement_t));
+    storage->accelerationDataQueue = xQueueCreate(ACCELERATION_QUEUE_LENGTH, sizeof(Axis3f));
+    storage->angularVelocityDataQueue = xQueueCreate(ANGULAR_VELOCITY_QUEUE_LENGTH, sizeof(Axis3f));
+    storage->positionDataQueue = xQueueCreate(POSITION_QUEUE_LENGTH, sizeof(positionMeasurement_t));
+    storage->distanceDataQueue = xQueueCreate(DISTANCE_QUEUE_LENGTH, sizeof(distanceMeasurement_t));
   } else {
-    xQueueReset(storage->posDataQueue);
-    xQueueReset(storage->distDataQueue);
+    xQueueReset(storage->accelerationDataQueue);
+    xQueueReset(storage->angularVelocityDataQueue);
+    xQueueReset(storage->positionDataQueue);
+    xQueueReset(storage->distanceDataQueue);
   }
 
   // Initialize the state
@@ -314,6 +285,235 @@ static void init(estimatorKalmanStorage_t* storage, const point_t initialPositio
   storage->Pm = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->P };
 
   storage->isInit = true;
+}
+
+static void addProcessNoise(estimatorKalmanStorage_t* storage, Axis3f *accStdDev, Axis3f *velStdDev, Axis3f *posStdDev, Axis3f *angularVelStdDev, Axis3f *angularPosStdDev, float dt) {
+  if (dt > 0) {
+    // Add process noise on position
+    storage->P[STATE_X][STATE_X] += powf(accStdDev->x*dt*dt + velStdDev->x*dt + posStdDev->x, 2);
+    storage->P[STATE_Y][STATE_Y] += powf(accStdDev->y*dt*dt + velStdDev->y*dt + posStdDev->y, 2);
+    storage->P[STATE_Z][STATE_Z] += powf(accStdDev->z*dt*dt + velStdDev->z*dt + posStdDev->z, 2);
+
+    // Add process noise on velocity
+    storage->P[STATE_PX][STATE_PX] += powf(accStdDev->x*dt + velStdDev->x, 2);
+    storage->P[STATE_PY][STATE_PY] += powf(accStdDev->y*dt + velStdDev->y, 2);
+    storage->P[STATE_PZ][STATE_PZ] += powf(accStdDev->z*dt + velStdDev->z, 2);
+
+    // Add process noise on attitude
+    storage->P[STATE_D0][STATE_D0] += powf(angularVelStdDev->x*dt + angularPosStdDev->x, 2);
+    storage->P[STATE_D1][STATE_D1] += powf(angularVelStdDev->y*dt + angularPosStdDev->y, 2);
+    storage->P[STATE_D2][STATE_D2] += powf(angularVelStdDev->z*dt + angularPosStdDev->z, 2);
+  }
+
+  for (int i=0; i<STATE_DIM; i++) {
+    for (int j=i; j<STATE_DIM; j++) {
+      float p = 0.5f*storage->P[i][j] + 0.5f*storage->P[j][i];
+      if (isnan(p) || p > MAX_COVARIANCE) {
+        storage->P[i][j] = storage->P[j][i] = MAX_COVARIANCE;
+      } else if ( i==j && p < MIN_COVARIANCE ) {
+        storage->P[i][j] = storage->P[j][i] = MIN_COVARIANCE;
+      } else {
+        storage->P[i][j] = storage->P[j][i] = p;
+      }
+    }
+  }
+
+  stateEstimatorAssertNotNaN(storage);
+}
+
+static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro, float dt) {
+  /* Here we discretize (euler forward) and linearise the quadrocopter dynamics in order
+   * to push the covariance forward.
+   *
+   * QUADROCOPTER DYNAMICS (see paper):
+   *
+   * \dot{x} = R(I + [[d]])p
+   * \dot{p} = f/m * e3 - [[\omega]]p - g(I - [[d]])R^-1 e3 //drag negligible
+   * \dot{d} = \omega
+   *
+   * where [[.]] is the cross-product matrix of .
+   *       \omega are the gyro measurements
+   *       e3 is the column vector [0 0 1]'
+   *       I is the identity
+   *       R is the current attitude as a rotation matrix
+   *       f/m is the mass-normalized motor force (acceleration in the body's z direction)
+   *       g is gravity
+   *       x, p, d, skew are the quad's states
+   * note that d (attitude error) is zero at the beginning of each iteration,
+   * since error information is incorporated into R after each Kalman update.
+   */
+
+  float dt2 = dt*dt;
+
+  // ====== DYNAMICS LINEARIZATION ======
+  // Initialize as the identity
+  A[STATE_X][STATE_X] = 1;
+  A[STATE_Y][STATE_Y] = 1;
+  A[STATE_Z][STATE_Z] = 1;
+
+  A[STATE_PX][STATE_PX] = 1;
+  A[STATE_PY][STATE_PY] = 1;
+  A[STATE_PZ][STATE_PZ] = 1;
+
+  A[STATE_D0][STATE_D0] = 1;
+  A[STATE_D1][STATE_D1] = 1;
+  A[STATE_D2][STATE_D2] = 1;
+
+  // position from body-frame velocity
+  A[STATE_X][STATE_PX] = storage->R[0][0]*dt;
+  A[STATE_Y][STATE_PX] = storage->R[1][0]*dt;
+  A[STATE_Z][STATE_PX] = storage->R[2][0]*dt;
+
+  A[STATE_X][STATE_PY] = storage->R[0][1]*dt;
+  A[STATE_Y][STATE_PY] = storage->R[1][1]*dt;
+  A[STATE_Z][STATE_PY] = storage->R[2][1]*dt;
+
+  A[STATE_X][STATE_PZ] = storage->R[0][2]*dt;
+  A[STATE_Y][STATE_PZ] = storage->R[1][2]*dt;
+  A[STATE_Z][STATE_PZ] = storage->R[2][2]*dt;
+
+  // position from attitude error
+  A[STATE_X][STATE_D0] = (storage->S[STATE_PY]*storage->R[0][2] - storage->S[STATE_PZ]*storage->R[0][1])*dt;
+  A[STATE_Y][STATE_D0] = (storage->S[STATE_PY]*storage->R[1][2] - storage->S[STATE_PZ]*storage->R[1][1])*dt;
+  A[STATE_Z][STATE_D0] = (storage->S[STATE_PY]*storage->R[2][2] - storage->S[STATE_PZ]*storage->R[2][1])*dt;
+
+  A[STATE_X][STATE_D1] = (- storage->S[STATE_PX]*storage->R[0][2] + storage->S[STATE_PZ]*storage->R[0][0])*dt;
+  A[STATE_Y][STATE_D1] = (- storage->S[STATE_PX]*storage->R[1][2] + storage->S[STATE_PZ]*storage->R[1][0])*dt;
+  A[STATE_Z][STATE_D1] = (- storage->S[STATE_PX]*storage->R[2][2] + storage->S[STATE_PZ]*storage->R[2][0])*dt;
+
+  A[STATE_X][STATE_D2] = (storage->S[STATE_PX]*storage->R[0][1] - storage->S[STATE_PY]*storage->R[0][0])*dt;
+  A[STATE_Y][STATE_D2] = (storage->S[STATE_PX]*storage->R[1][1] - storage->S[STATE_PY]*storage->R[1][0])*dt;
+  A[STATE_Z][STATE_D2] = (storage->S[STATE_PX]*storage->R[2][1] - storage->S[STATE_PY]*storage->R[2][0])*dt;
+
+  // body-frame velocity from body-frame velocity
+  A[STATE_PX][STATE_PX] = 1; // Drag negligible
+  A[STATE_PY][STATE_PX] =-gyro->z*dt;
+  A[STATE_PZ][STATE_PX] = gyro->y*dt;
+
+  A[STATE_PX][STATE_PY] = gyro->z*dt;
+  A[STATE_PY][STATE_PY] = 1; // Drag negligible
+  A[STATE_PZ][STATE_PY] =-gyro->x*dt;
+
+  A[STATE_PX][STATE_PZ] =-gyro->y*dt;
+  A[STATE_PY][STATE_PZ] = gyro->x*dt;
+  A[STATE_PZ][STATE_PZ] = 1; // Drag negligible
+
+  // body-frame velocity from attitude error
+  A[STATE_PX][STATE_D0] = 0;
+  A[STATE_PY][STATE_D0] = storage->R[2][2]*dt;
+  A[STATE_PZ][STATE_D0] = storage->R[2][1]*dt;
+
+  A[STATE_PX][STATE_D1] = storage->R[2][2]*dt;
+  A[STATE_PY][STATE_D1] = 0;
+  A[STATE_PZ][STATE_D1] = storage->R[2][0]*dt;
+
+  A[STATE_PX][STATE_D2] = storage->R[2][1]*dt;
+  A[STATE_PY][STATE_D2] = storage->R[2][0]*dt;
+  A[STATE_PZ][STATE_D2] = 0;
+
+  // attitude error from attitude error
+  /**
+   * At first glance, it may not be clear where the next values come from, since they do not appear directly in the
+   * dynamics. In this prediction step, we skip the step of first updating attitude-error, and then incorporating the
+   * new error into the current attitude (which requires a rotation of the attitude-error covariance). Instead, we
+   * directly update the body attitude, however still need to rotate the covariance, which is what you see below.
+   *
+   * This comes from a second order approximation to:
+   * Sigma_post = exps(-d) Sigma_pre exps(-d)'
+   *            ~ (I + [[-d]] + [[-d]]^2 / 2) Sigma_pre (I + [[-d]] + [[-d]]^2 / 2)'
+   * where d is the attitude error expressed as Rodriges parameters, ie. d0 = 1/2*gyro.x*dt under the assumption that
+   * d = [0,0,0] at the beginning of each prediction step and that gyro.x is constant over the sampling period
+   *
+   * As derived in "Covariance Correction Step for Kalman Filtering with an Attitude"
+   * http://arc.aiaa.org/doi/abs/10.2514/1.G000848
+   */
+  float d0 = gyro->x*dt/2;
+  float d1 = gyro->y*dt/2;
+  float d2 = gyro->z*dt/2;
+
+  A[STATE_D0][STATE_D0] =  1 - d1*d1/2 - d2*d2/2;
+  A[STATE_D0][STATE_D1] =  d2 + d0*d1/2;
+  A[STATE_D0][STATE_D2] = -d1 + d0*d2/2;
+
+  A[STATE_D1][STATE_D0] = -d2 + d0*d1/2;
+  A[STATE_D1][STATE_D1] =  1 - d0*d0/2 - d2*d2/2;
+  A[STATE_D1][STATE_D2] =  d0 + d1*d2/2;
+
+  A[STATE_D2][STATE_D0] =  d1 + d0*d2/2;
+  A[STATE_D2][STATE_D1] = -d0 + d1*d2/2;
+  A[STATE_D2][STATE_D2] = 1 - d0*d0/2 - d1*d1/2;
+
+
+  // ====== COVARIANCE UPDATE ======
+  mat_mult(&Am, &storage->Pm, &tmpNN1m); // A P
+  mat_trans(&Am, &tmpNN2m); // A'
+  mat_mult(&tmpNN1m, &tmpNN2m, &storage->Pm); // A P A'
+  // Process noise is added after the return from the prediction step
+
+  // ====== PREDICTION STEP ======
+
+  float dx, dy, dz;
+  float tmpSPX, tmpSPY, tmpSPZ;
+
+  // Position updates in the body frame (will be rotated to inertial frame)
+  dx = storage->S[STATE_PX] * dt + acc->x * dt2 / 2.0f;
+  dy = storage->S[STATE_PY] * dt + acc->y * dt2 / 2.0f;
+  dz = storage->S[STATE_PZ] * dt + acc->z * dt2 / 2.0f;
+
+  // Position update
+  storage->S[STATE_X] += storage->R[0][0] * dx + storage->R[0][1] * dy + storage->R[0][2] * dz;
+  storage->S[STATE_Y] += storage->R[1][0] * dx + storage->R[1][1] * dy + storage->R[1][2] * dz;
+  storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz;
+
+  // Keep previous time step's state for the update
+  tmpSPX = storage->S[STATE_PX];
+  tmpSPY = storage->S[STATE_PY];
+  tmpSPZ = storage->S[STATE_PZ];
+
+  // Body-velocity update: accelerometers - gyros cross velocity - gravity in body frame
+  storage->S[STATE_PX] += dt * (acc->x + gyro->z * tmpSPY - gyro->y * tmpSPZ - storage->R[2][0]);
+  storage->S[STATE_PY] += dt * (acc->y - gyro->z * tmpSPX + gyro->x * tmpSPZ - storage->R[2][1]);
+  storage->S[STATE_PZ] += dt * (acc->z + gyro->y * tmpSPX - gyro->x * tmpSPY - storage->R[2][2]);
+
+  if(storage->S[STATE_Z] < 0) {
+    storage->S[STATE_Z] = 0;
+    storage->S[STATE_PX] = 0;
+    storage->S[STATE_PY] = 0;
+    storage->S[STATE_PZ] = 0;
+  }
+
+  // Attitude update (rotate by gyroscope), we do this in quaternions this is the gyroscope angular velocity integrated over the sample period
+  float dtwx = dt*gyro->x;
+  float dtwy = dt*gyro->y;
+  float dtwz = dt*gyro->z;
+
+  // Compute the quaternion values in [w,x,y,z] order
+  if(dtwx != 0 && dtwy != 0 && dtwz != 0) {
+    float angle = arm_sqrt(dtwx*dtwx + dtwy*dtwy + dtwz*dtwz);
+    float ca = arm_cos_f32(angle/2.0f);
+    float sa = arm_sin_f32(angle/2.0f);
+    float dq[4] = {ca , sa*dtwx/angle , sa*dtwy/angle , sa*dtwz/angle};
+
+    // Rotate the quad's attitude by the delta quaternion vector computed above
+    float tmpq0 = (dq[0]*storage->q[0] - dq[1]*storage->q[1] - dq[2]*storage->q[2] - dq[3]*storage->q[3]);
+    float tmpq1 = (1.0f)*(dq[1]*storage->q[0] + dq[0]*storage->q[1] + dq[3]*storage->q[2] - dq[2]*storage->q[3]);
+    float tmpq2 = (1.0f)*(dq[2]*storage->q[0] - dq[3]*storage->q[1] + dq[0]*storage->q[2] + dq[1]*storage->q[3]);
+    float tmpq3 = (1.0f)*(dq[3]*storage->q[0] + dq[2]*storage->q[1] - dq[1]*storage->q[2] + dq[0]*storage->q[3]);
+
+    // Normalize and store the result
+    float norm = arm_sqrt(tmpq0*tmpq0 + tmpq1*tmpq1 + tmpq2*tmpq2 + tmpq3*tmpq3);
+    storage->q[0] = tmpq0/norm;
+    storage->q[1] = tmpq1/norm;
+    storage->q[2] = tmpq2/norm;
+    storage->q[3] = tmpq3/norm;
+  } else {
+    storage->q[0] = 0;
+    storage->q[1] = 0;
+    storage->q[2] = 0;
+    storage->q[3] = 0;
+  }
+
+  stateEstimatorAssertNotNaN(storage);
 }
 
 static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise) {
@@ -368,7 +568,7 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
   stateEstimatorAssertNotNaN(storage);
 }
 
-static void updateWithPosition(estimatorKalmanStorage_t* storage, positionMeasurement_t *xyz) {
+static void updateWithPosition(estimatorKalmanStorage_t* storage, positionMeasurement_t* xyz) {
   // a direct measurement of states x, y, and z
   // do a scalar update for each state, since this should be faster than updating all together
   for (int i=0; i<3; i++) {
@@ -381,8 +581,7 @@ static void updateWithPosition(estimatorKalmanStorage_t* storage, positionMeasur
   }
 }
 
-static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasurement_t *d)
-{
+static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasurement_t* d) {
   // a measurement of distance to point (x, y, z)
   float h[STATE_DIM] = {0};
   arm_matrix_instance_f32 H = {1, STATE_DIM, h};
@@ -402,7 +601,7 @@ static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasur
   scalarUpdate(storage, &H, measuredDistance-predictedDistance, d->stdDev);
 }
 
-static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
+static void finalize(estimatorKalmanStorage_t* storage) {
   // Incorporate the attitude error (Kalman filter state) with the attitude
   float v0 = storage->S[STATE_D0];
   float v1 = storage->S[STATE_D1];
@@ -519,8 +718,6 @@ static void finalize(estimatorKalmanStorage_t* storage, uint32_t tick) {
 }
 
 static void update(estimatorKalmanStorage_t* storage) {
-  // Tracks whether an update to the state has been made, and the state therefore requires finalization
-  bool doneUpdate = false;
   uint32_t tick = xTaskGetTickCount(); // would be nice if this had a precision higher than 1ms...
 
 #ifdef KALMAN_DECOUPLE_XY
@@ -531,70 +728,128 @@ static void update(estimatorKalmanStorage_t* storage) {
   decoupleState(storage, STATE_PY);
 #endif
 
-  /**
-   * Add process noise every loop, rather than every prediction
+  /*
+   * Prediction step + noise addition
    */
-  addProcessNoise(storage, (float)(tick - storage->lastProcessNoiseUpdate) / configTICK_RATE_HZ);
-  storage->lastProcessNoiseUpdate = tick;
+
+  float dt = (float)((tick - storage->lastProcessNoiseUpdate) / configTICK_RATE_HZ);
+
+  Axis3f acceleration = {.x = 0, .y = 0, .z = 0 };
+  bool accelerationDataReceived = false;
+  while (hasAccelerationData(storage, &acceleration)) {
+    accelerationDataReceived = true;
+    // Accumulate acceleration. Not done because was not needed yet
+  }
+
+  Axis3f angularVelocity = {.x = 0, .y = 0, .z = 0 };
+  bool angularVelocityDataReceived = false;
+  while (hasAngularVelocityData(storage, &angularVelocity)) {
+    angularVelocityDataReceived = true;
+    // Accumulate angular velocity. Not done because was not needed yet
+  }
+
+  predict(storage, &acceleration, &angularVelocity, dt);
+
+  // Add process noise every loop, rather than every prediction
+  Axis3f accStdDev = accelerationDataReceived ? (Axis3f){.x = procNoiseAcc_xy, .y = procNoiseAcc_xy, .z = procNoiseAcc_z } : (Axis3f){.x = 0, .y = 0, .z = 0 };
+  Axis3f angularVelStdDev = angularVelocityDataReceived == true ? (Axis3f){.x = measNoiseGyro_rollpitch, .y = measNoiseGyro_rollpitch, .z = measNoiseGyro_yaw } : (Axis3f){.x = 0, .y = 0, .z = 0 };
+  Axis3f velStdDev = {.x = procNoiseVel, .y = procNoiseVel, .z = procNoiseVel };
+  Axis3f posStdDev = {.x = procNoisePos, .y = procNoisePos, .z = procNoisePos };
+  Axis3f angularPosStdDev = {.x = procNoiseAtt, .y = procNoiseAtt, .z = procNoiseAtt };
+  addProcessNoise(storage, &accStdDev, &velStdDev, &posStdDev, &angularVelStdDev, &angularPosStdDev, dt);
 
   /**
    * Sensor measurements can come in sporadically and faster than the stabilizer loop frequency,
    * we therefore consume all measurements since the last loop, rather than accumulating
    */
+
   positionMeasurement_t position;
-  while (hasPositionMeasurement(storage, &position)) {
+  while (hasPositionData(storage, &position)) {
     updateWithPosition(storage, &position);
-    doneUpdate = true;
   }
 
   distanceMeasurement_t dist;
-  while (hasDistanceMeasurement(storage, &dist)) {
+  while (hasDistanceData(storage, &dist)) {
     updateWithDistance(storage, &dist);
-    doneUpdate = true;
   }
 
   /**
-   * If an update has been made, the state is finalized:
+   * The state is finalized:
    * - the attitude error is moved into the body attitude quaternion,
    * - the body attitude is converted into a rotation matrix for the next prediction, and
    * - correctness of the covariance matrix is ensured
    */
-  if (doneUpdate) {
-    finalize(storage, tick);
-  }
+
+  finalize(storage);
+
+  // Save state to the storage
+  storage->lastProcessNoiseUpdate = tick;
 
   stateEstimatorAssertNotNaN(storage);
 }
 
-static bool enqueueMeasurement(xQueueHandle queue, const void* measurement) {
-  portBASE_TYPE result;
-  bool isInInterrupt = (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
+/*
+ * Getters
+ */
 
-  if (isInInterrupt) {
-    portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-    result = xQueueSendFromISR(queue, measurement, &xHigherPriorityTaskWoken);
-    if(xHigherPriorityTaskWoken == pdTRUE) {
-      portYIELD();
-    }
-  } else {
-    result = xQueueSend(queue, measurement, 0);
-  }
-  return (result == pdTRUE);
+static void getPosition(const estimatorKalmanStorage_t* storage, point_t* position) {
+  ASSERT(storage->isInit);
+
+  position->x = storage->S[STATE_X];
+  position->y = storage->S[STATE_Y];
+  position->z = storage->S[STATE_Z];
 }
 
-static bool enqueuePosition(const estimatorKalmanStorage_t* storage, const positionMeasurement_t position) {
+static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
   ASSERT(storage->isInit);
-  return enqueueMeasurement(storage->posDataQueue, (void *)&position);
-}
 
-static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t distance) {
-  ASSERT(storage->isInit);
-  return enqueueMeasurement(storage->distDataQueue, (void *)&distance);
+  uint32_t tick = xTaskGetTickCount();
+
+  // position state is already in world frame
+  state->position = (point_t){
+    .timestamp = tick,
+    .x = storage->S[STATE_X],
+    .y = storage->S[STATE_Y],
+    .z = storage->S[STATE_Z]
+  };
+
+  // velocity is in body frame and needs to be rotated to world frame
+  state->velocity = (velocity_t){
+    .timestamp = tick,
+    .x = storage->R[0][0]*storage->S[STATE_PX] + storage->R[0][1]*storage->S[STATE_PY] + storage->R[0][2]*storage->S[STATE_PZ],
+    .y = storage->R[1][0]*storage->S[STATE_PX] + storage->R[1][1]*storage->S[STATE_PY] + storage->R[1][2]*storage->S[STATE_PZ],
+    .z = storage->R[2][0]*storage->S[STATE_PX] + storage->R[2][1]*storage->S[STATE_PY] + storage->R[2][2]*storage->S[STATE_PZ]
+  };
+
+  // convert the new attitude into Euler YPR
+  float yaw = atan2f(2*(storage->q[1]*storage->q[2]+storage->q[0]*storage->q[3]) , powf(storage->q[0], 2) + powf(storage->q[1], 2) - powf(storage->q[2], 2) - powf(storage->q[3], 2));
+  float pitch = asinf(-2*(storage->q[1]*storage->q[3] - storage->q[0]*storage->q[2]));
+  float roll = atan2f(2*(storage->q[2]*storage->q[3]+storage->q[0]*storage->q[1]) , powf(storage->q[0], 2) - powf(storage->q[1], 2) - powf(storage->q[2], 2) + powf(storage->q[3], 2));
+
+  // Save attitude, adjusted for the legacy CF2 body coordinate system
+  state->attitude = (attitude_t){
+    .timestamp = tick,
+    .roll = roll*RAD_TO_DEG,
+    .pitch = -pitch*RAD_TO_DEG,
+    .yaw = yaw*RAD_TO_DEG
+  };
+
+  // Save quaternion, hopefully one day this could be used in a better controller.
+  // Note that this is not adjusted for the legacy coordinate system
+  state->attitudeQuaternion = (quaternion_t){
+    .timestamp = tick,
+    .w = storage->q[0],
+    .x = storage->q[1],
+    .y = storage->q[2],
+    .z = storage->q[3]
+  };
 }
 
 estimatorKalmanEngine_t estimatorKalmanEngine = {
   .init = init,
   .update = update,
+  .enqueueAcceleration = enqueueAcceleration,
+  .enqueueAngularVelocity = enqueueAngularVelocity,
   .enqueuePosition = enqueuePosition,
   .enqueueDistance = enqueueDistance,
   .getPosition = getPosition,

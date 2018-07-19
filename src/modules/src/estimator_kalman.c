@@ -90,7 +90,7 @@ static void stateEstimatorUpdateWithBaro(baro_t *baro);
 #endif
 
 /*  - Finalization to incorporate attitude error into body attitude */
-static void stateEstimatorFinalize(sensorData_t *sensors, uint32_t tick);
+static void stateEstimatorFinalize(sensorData_t *sensors);
 
 /*  - Externalization to move the filter's internal state into the external state expected by other modules */
 static void stateEstimatorExternalizeState(state_t *state, sensorData_t *sensors, uint32_t tick);
@@ -528,7 +528,7 @@ void estimatorKalman(state_t *state, sensorData_t *sensors, control_t *control, 
 
   if (doneUpdate)
   {
-    stateEstimatorFinalize(sensors, osTick);
+    stateEstimatorFinalize(sensors);
     stateEstimatorAssertNotNaN();
   }
 
@@ -1124,7 +1124,7 @@ static void stateEstimatorUpdateWithTof(tofMeasurement_t *tof)
   }
 }
 
-static void stateEstimatorFinalize(sensorData_t *sensors, uint32_t tick)
+static void stateEstimatorFinalize(sensorData_t *sensors)
 {
   // Matrix to rotate the attitude covariances once updated
   static float A[STATE_DIM][STATE_DIM];

@@ -29,8 +29,10 @@ typedef struct {
   float S[STATE_DIM];
 
   // The queues to add data to the filter
-  xQueueHandle posDataQueue;
-  xQueueHandle distDataQueue;
+  xQueueHandle accelerationDataQueue;
+  xQueueHandle angularVelocityDataQueue;
+  xQueueHandle positionDataQueue;
+  xQueueHandle distanceDataQueue;
 
   // The quad's attitude as a quaternion (w,x,y,z)
   // We store as a quaternion to allow easy normalization (in comparison to a rotation matrix),

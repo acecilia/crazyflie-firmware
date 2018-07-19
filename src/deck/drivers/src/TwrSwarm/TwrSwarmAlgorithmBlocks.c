@@ -509,17 +509,17 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
     } if(neighbours == 2) {
       // Simulate 1D
       positionMeasurement_t position = { .x = NAN, .y = 0, .z = 0, .stdDev = 0 };
-      estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, position);
+      estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, &position);
     } else if (neighbours == 3) {
       // Simulate 2D
       positionMeasurement_t position = { .x = NAN, .y = NAN, .z = 0, .stdDev = 0 };
-      estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, position);
+      estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, &position);
     }
   }
 
   // Pass the known data to the estimator and enqueue it, so it can calculate the position in the next update
   for(unsigned int i = 0; i < distancesIndex; i++) {
-    estimatorKalmanEngine.enqueueDistance(&neighbourData->estimatorKalmanStorage, distances[i]);
+    estimatorKalmanEngine.enqueueDistance(&neighbourData->estimatorKalmanStorage, &distances[i]);
   }
 
   // Use all the enqueued data to calculate the position
