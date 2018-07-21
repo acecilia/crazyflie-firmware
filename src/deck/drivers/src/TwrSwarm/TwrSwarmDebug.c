@@ -1,4 +1,5 @@
 #include "TwrSwarmDebug.h"
+#include "TwrSwarmDump.h"
 #include "log.h"
 
 #include "FreeRTOS.h"
@@ -104,6 +105,8 @@ static void logTimerCallback(xTimerHandle timer) {
 static void init() {
   logTimer = xTimerCreate("loggingTimer", M2T(1000), pdTRUE, NULL, logTimerCallback);
   xTimerStart(logTimer, 0);
+
+  twrSwarmDumpInit();
 }
 
 LOG_GROUP_START(twrSwarm)

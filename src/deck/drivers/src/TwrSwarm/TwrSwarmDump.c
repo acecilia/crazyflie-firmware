@@ -9,20 +9,17 @@
 #include "TwrSwarmDump.h"
 
 #include <stdbool.h>
+#include <string.h>
 #include "FreeRTOS.h"
 #include "timers.h"
 #include "debug.h"
 #include "cfassert.h"
-#include "param.h"
+#include "log.h"
+#include "limits.h"
 
 #include "sysload.h"
 
 static void timerHandler(xTimerHandle timer);
-
-static bool initialized = false;
-static uint8_t triggerDump = 0;
-static uint8_t continousTriggerDump = 0;
-static uint32_t triggerDumpPeriod = 1000; // ms. Default to 1s
 
 typedef struct {
   uint32_t ulRunTimeCounter;
@@ -30,15 +27,21 @@ typedef struct {
 } taskData_t;
 
 #define TASK_MAX_COUNT 16
+bool initialized = false;
 static taskData_t previousSnapshot[TASK_MAX_COUNT];
 static int taskTopIndex = 0;
 static uint32_t previousTotalRunTime = 0;
 
-void sysLoadInit() {
+// Logging
+static uint8_t load = 0;
+static uint8_t idleLoad = 0;
+static uint16_t stack = INT16_MAX;
+
+void twrSwarmDumpInit() {
   ASSERT(!initialized);
 
-  xTimerHandle timer = xTimerCreate( "sysLoadMonitorTimer", M2T(triggerDumpPeriod), pdFALSE, NULL, timerHandler);
-  xTimerStart(timer, 100);
+  xTimerHandle timer = xTimerCreate( "twrSwarmDumpTimer", M2T(1000), pdTRUE, NULL, timerHandler);
+  xTimerStart(timer, 1000);
 
   initialized = true;
 }
@@ -63,43 +66,47 @@ static taskData_t* getPreviousTaskData(uint32_t xTaskNumber) {
 }
 
 static void timerHandler(xTimerHandle timer) {
-  if (triggerDump != 0 || continousTriggerDump != 0) {
-    uint32_t totalRunTime;
+  uint32_t totalRunTime;
 
-    TaskStatus_t taskStats[TASK_MAX_COUNT];
-    uint32_t taskCount = uxTaskGetSystemState(taskStats, TASK_MAX_COUNT, &totalRunTime);
-    ASSERT(taskCount < TASK_MAX_COUNT);
+  TaskStatus_t taskStats[TASK_MAX_COUNT];
+  uint32_t taskCount = uxTaskGetSystemState(taskStats, TASK_MAX_COUNT, &totalRunTime);
+  ASSERT(taskCount < TASK_MAX_COUNT);
 
-    uint32_t totalDelta = totalRunTime - previousTotalRunTime;
-    float f = 100.0 / totalDelta;
+  uint32_t totalDelta = totalRunTime - previousTotalRunTime;
+  float f = 100.0 / totalDelta;
 
-    // Dumps the the CPU load and stack usage for all tasks
-    // CPU usage is since last dump in % compared to total time spent in tasks. Note that time spent in interrupts will be included in measured time.
-    // Stack usage is displayed as nr of unused bytes at peak stack usage.
+  // Dumps the the CPU load and stack usage for all tasks
+  // CPU usage is since last dump in % compared to total time spent in tasks. Note that time spent in interrupts will be included in measured time.
+  // Stack usage is displayed as nr of unused bytes at peak stack usage.
 
-    DEBUG_PRINT("Task dump\n");
-    DEBUG_PRINT("Load\tStack left\tName\n");
-    for (uint32_t i = 0; i < taskCount; i++) {
-      TaskStatus_t* stats = &taskStats[i];
-      taskData_t* previousTaskData = getPreviousTaskData(stats->xTaskNumber);
+  uint8_t loadAcc = 0;
+  for (uint32_t i = 0; i < taskCount; i++) {
+    TaskStatus_t* stats = &taskStats[i];
+    taskData_t* previousTaskData = getPreviousTaskData(stats->xTaskNumber);
+    uint32_t taskRunTime = stats->ulRunTimeCounter;
+    uint8_t taskLoad = (uint8_t)(f * (taskRunTime - previousTaskData->ulRunTimeCounter));
 
-      uint32_t taskRunTime = stats->ulRunTimeCounter;
-      float load = f * (taskRunTime - previousTaskData->ulRunTimeCounter);
-      DEBUG_PRINT("%.2f \t%u \t%s\n", (double)load, stats->usStackHighWaterMark, stats->pcTaskName);
+    if(strcmp(stats->pcTaskName, "IDLE") == 0) {
+      // Do nothing
+      idleLoad = 100 - taskLoad;
+    } else {
+      loadAcc += taskLoad;
 
-      previousTaskData->ulRunTimeCounter = taskRunTime;
+      uint16_t newStack = stats->usStackHighWaterMark;
+      if(newStack < stack) {
+        DEBUG_PRINT("New minimum stack: %d | Set by: %s\n", newStack, stats->pcTaskName);
+        stack = newStack;
+      }
     }
 
+    previousTaskData->ulRunTimeCounter = taskRunTime;
     previousTotalRunTime = totalRunTime;
-
-    triggerDump = 0;
   }
-
-  xTimerChangePeriod(timer, M2T(triggerDumpPeriod), 0);
+  load = loadAcc;
 }
 
-PARAM_GROUP_START(system)
-PARAM_ADD(PARAM_UINT8, taskDump, &triggerDump)
-PARAM_ADD(PARAM_UINT8, continousTaskDump, &continousTriggerDump)
-PARAM_ADD(PARAM_UINT32, taskDumpPeriod, &triggerDumpPeriod)
-PARAM_GROUP_STOP(system)
+LOG_GROUP_START(twrSwarmDump)
+LOG_ADD(LOG_UINT8, load, &load)
+LOG_ADD(LOG_UINT8, idleLoad, &idleLoad)
+LOG_ADD(LOG_UINT16, stack, &stack)
+LOG_GROUP_STOP(twrSwarmDump)
