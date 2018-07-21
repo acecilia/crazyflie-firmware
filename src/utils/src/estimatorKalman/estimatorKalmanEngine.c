@@ -52,14 +52,10 @@ static inline void mat_mult(const arm_matrix_instance_f32 * pSrcA, const arm_mat
   configASSERT(ARM_MATH_SUCCESS == arm_mat_mult_f32(pSrcA, pSrcB, pDst));
 }
 static inline float arm_sqrt(float32_t in) {
-  if(in == 0) {
-    return 0;
-  } else {
-    float pOut = 0;
-    arm_status result = arm_sqrt_f32(in, &pOut);
-    configASSERT(ARM_MATH_SUCCESS == result);
-    return pOut;
-  }
+  float pOut = 0;
+  arm_status result = arm_sqrt_f32(in, &pOut);
+  configASSERT(ARM_MATH_SUCCESS == result);
+  return pOut;
 }
 
 /**
@@ -588,22 +584,24 @@ static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasur
   float dy = storage->S[STATE_Y] - d->y;
   float dz = storage->S[STATE_Z] - d->z;
 
-  float predictedDistance = arm_sqrt(powf(dx, 2) + powf(dy, 2) + powf(dz, 2));
-  float measuredDistance = d->distance;
+  float predictedDistance;
+  if(dx != 0 || dy != 0 || dz != 0) {
+  predictedDistance = arm_sqrt(powf(dx, 2) + powf(dy, 2) + powf(dz, 2));
 
-  if(predictedDistance != 0) {
     // The measurement is: z = sqrt(dx^2 + dy^2 + dz^2). The derivative dz/dX gives h.
     h[STATE_X] = dx/predictedDistance;
     h[STATE_Y] = dy/predictedDistance;
     h[STATE_Z] = dz/predictedDistance;
   } else {
     // This means that the actual position of the copter and the meassure position are the same. Because of that, we do not know the direction of the update, so h should have the same value for [STATE_X], h[STATE_Y] and h[STATE_Z]
+    predictedDistance = 0;
     float hValue = 1.0f / sqrtf(3.0f); // Module of h should be 1
     h[STATE_X] = hValue;
     h[STATE_Y] = hValue;
     h[STATE_Z] = hValue;
   }
 
+  float measuredDistance = d->distance;
   scalarUpdate(storage, &H, measuredDistance-predictedDistance, d->stdDev);
 }
 
