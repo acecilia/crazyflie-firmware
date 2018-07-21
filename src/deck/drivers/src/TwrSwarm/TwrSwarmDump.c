@@ -1,30 +1,12 @@
-/**
- *    ||          ____  _ __                           
- * +------+      / __ )(_) /_______________ _____  ___ 
- * | 0xBC |     / __  / / __/ ___/ ___/ __ `/_  / / _ \
- * +------+    / /_/ / / /_/ /__/ /  / /_/ / / /_/  __/
- *  ||  ||    /_____/_/\__/\___/_/   \__,_/ /___/\___/
- *
- * Crazyflie control firmware
- *
- * Copyright (C) 2011-2016 Bitcraze AB
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, in version 3.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
- * sysload.c - System load monitor
- */
+//
+//  TwrSwarmDump.c
+//  xcode
+//
+//  Created by Andres on 21/7/18.
+//  Copyright © 2018 bitcraze. All rights reserved.
+//
 
-#define DEBUG_MODULE "SYSLOAD"
+#include "TwrSwarmDump.h"
 
 #include <stdbool.h>
 #include "FreeRTOS.h"
@@ -35,12 +17,12 @@
 
 #include "sysload.h"
 
-#define TIMER_PERIOD M2T(1000)
-
 static void timerHandler(xTimerHandle timer);
 
 static bool initialized = false;
 static uint8_t triggerDump = 0;
+static uint8_t continousTriggerDump = 0;
+static uint32_t triggerDumpPeriod = 1000; // ms. Default to 1s
 
 typedef struct {
   uint32_t ulRunTimeCounter;
@@ -55,7 +37,7 @@ static uint32_t previousTotalRunTime = 0;
 void sysLoadInit() {
   ASSERT(!initialized);
 
-  xTimerHandle timer = xTimerCreate( "sysLoadMonitorTimer", TIMER_PERIOD, pdTRUE, NULL, timerHandler);
+  xTimerHandle timer = xTimerCreate( "sysLoadMonitorTimer", M2T(triggerDumpPeriod), pdFALSE, NULL, timerHandler);
   xTimerStart(timer, 100);
 
   initialized = true;
@@ -81,7 +63,7 @@ static taskData_t* getPreviousTaskData(uint32_t xTaskNumber) {
 }
 
 static void timerHandler(xTimerHandle timer) {
-  if (triggerDump != 0) {
+  if (triggerDump != 0 || continousTriggerDump != 0) {
     uint32_t totalRunTime;
 
     TaskStatus_t taskStats[TASK_MAX_COUNT];
@@ -104,7 +86,7 @@ static void timerHandler(xTimerHandle timer) {
       uint32_t taskRunTime = stats->ulRunTimeCounter;
       float load = f * (taskRunTime - previousTaskData->ulRunTimeCounter);
       DEBUG_PRINT("%.2f \t%u \t%s\n", (double)load, stats->usStackHighWaterMark, stats->pcTaskName);
-      
+
       previousTaskData->ulRunTimeCounter = taskRunTime;
     }
 
@@ -112,8 +94,12 @@ static void timerHandler(xTimerHandle timer) {
 
     triggerDump = 0;
   }
+
+  xTimerChangePeriod(timer, M2T(triggerDumpPeriod), 0);
 }
 
 PARAM_GROUP_START(system)
 PARAM_ADD(PARAM_UINT8, taskDump, &triggerDump)
+PARAM_ADD(PARAM_UINT8, continousTaskDump, &continousTriggerDump)
+PARAM_ADD(PARAM_UINT32, taskDumpPeriod, &triggerDumpPeriod)
 PARAM_GROUP_STOP(system)
