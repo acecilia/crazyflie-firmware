@@ -35,7 +35,11 @@ static uint32_t previousTotalRunTime = 0;
 // Logging
 static uint8_t load = 0;
 static uint8_t idleLoad = 0;
-static uint16_t stack = INT16_MAX;
+
+static uint8_t lpsLoad = 0;
+static uint16_t lpsStack = 0;
+
+static uint16_t minStack = INT16_MAX;
 
 void twrSwarmDumpInit() {
   ASSERT(!initialized);
@@ -85,6 +89,13 @@ static void timerHandler(xTimerHandle timer) {
     taskData_t* previousTaskData = getPreviousTaskData(stats->xTaskNumber);
     uint32_t taskRunTime = stats->ulRunTimeCounter;
     uint8_t taskLoad = (uint8_t)(f * (taskRunTime - previousTaskData->ulRunTimeCounter));
+    uint16_t taskStack = stats->usStackHighWaterMark;
+
+    if(strcmp(stats->pcTaskName, "lps") == 0) {
+      // Do nothing
+      lpsLoad = taskLoad;
+      lpsStack = taskStack;
+    }
 
     if(strcmp(stats->pcTaskName, "IDLE") == 0) {
       // Do nothing
@@ -92,10 +103,9 @@ static void timerHandler(xTimerHandle timer) {
     } else {
       loadAcc += taskLoad;
 
-      uint16_t newStack = stats->usStackHighWaterMark;
-      if(newStack < stack) {
-        DEBUG_PRINT("New minimum stack: %d | Set by: %s\n", newStack, stats->pcTaskName);
-        stack = newStack;
+      if(taskStack < minStack) {
+        DEBUG_PRINT("New minimum stack: %d | Set by: %s\n", taskStack, stats->pcTaskName);
+        minStack = taskStack;
       }
     }
 
@@ -108,5 +118,7 @@ static void timerHandler(xTimerHandle timer) {
 LOG_GROUP_START(twrSwarmDump)
 LOG_ADD(LOG_UINT8, load, &load)
 LOG_ADD(LOG_UINT8, idleLoad, &idleLoad)
-LOG_ADD(LOG_UINT16, stack, &stack)
+LOG_ADD(LOG_UINT8, lpsLoad, &lpsLoad)
+LOG_ADD(LOG_UINT16, lpsStack, &lpsStack)
+LOG_ADD(LOG_UINT16, minStack, &minStack)
 LOG_GROUP_STOP(twrSwarmDump)
