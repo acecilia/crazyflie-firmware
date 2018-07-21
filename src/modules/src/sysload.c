@@ -111,8 +111,6 @@ static void timerHandler(xTimerHandle timer) {
 
     previousTotalRunTime = totalRunTime;
 
-    test_libdict();
-
     triggerDump = 0;
   }
 }
