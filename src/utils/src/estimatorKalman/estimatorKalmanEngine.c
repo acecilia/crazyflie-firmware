@@ -26,18 +26,9 @@
 #define MIN_COVARIANCE (1e-6f)
 
 // The bounds on states, these shouldn't be hit...
-#define MAX_POSITION (100) // Meters
-#define MAX_VELOCITY (10)  // Meters per second
-
-/*
-// Initial variances, uncertain of position, but know we're stationary and roughly flat
-// NOTE: only here as a reference. This values should not be used as static variables, but they should be passed to the filter as arguments in the init function
-static const float stdDevInitialPosition_xy = 100;
-static const float stdDevInitialPosition_z = 1;
-static const float stdDevInitialVelocity = 0.01;
-static const float stdDevInitialAttitude_rollpitch = 0.01;
-static const float stdDevInitialAttitude_yaw = 0.01;
-*/
+#define MAX_POSITION (100)        // In meters
+#define MAX_VELOCITY (10)         // In m/s
+#define MAX_ANGULAR_VELOCITY (30) // In rad/s
 
 static float procNoiseAcc_xy = 0.5f;
 static float procNoiseAcc_z = 1.0f;
@@ -520,8 +511,12 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
 }
 
 static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise) {
+  // Perform some checks in the input
   configASSERT(Hm->numRows == 1);
   configASSERT(Hm->numCols == STATE_DIM);
+  for (int i=0; i<Hm->numCols; i++) {
+    configASSERT(!isnan(Hm->pData[i]));
+  }
 
   // ====== INNOVATION COVARIANCE ======
 
@@ -596,10 +591,18 @@ static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasur
   float predictedDistance = arm_sqrt(powf(dx, 2) + powf(dy, 2) + powf(dz, 2));
   float measuredDistance = d->distance;
 
-  // The measurement is: z = sqrt(dx^2 + dy^2 + dz^2). The derivative dz/dX gives h.
-  h[STATE_X] = dx/predictedDistance;
-  h[STATE_Y] = dy/predictedDistance;
-  h[STATE_Z] = dz/predictedDistance;
+  if(predictedDistance != 0) {
+    // The measurement is: z = sqrt(dx^2 + dy^2 + dz^2). The derivative dz/dX gives h.
+    h[STATE_X] = dx/predictedDistance;
+    h[STATE_Y] = dy/predictedDistance;
+    h[STATE_Z] = dz/predictedDistance;
+  } else {
+    // This means that the actual position of the copter and the meassure position are the same. Because of that, we do not know the direction of the update, so h should have the same value for [STATE_X], h[STATE_Y] and h[STATE_Z]
+    float hValue = 1.0f / sqrtf(3.0f); // Module of h should be 1
+    h[STATE_X] = hValue;
+    h[STATE_Y] = hValue;
+    h[STATE_Z] = hValue;
+  }
 
   scalarUpdate(storage, &H, measuredDistance-predictedDistance, d->stdDev);
 }
@@ -792,6 +795,16 @@ static void update(estimatorKalmanStorage_t* storage) {
 }
 
 /*
+ * Helpers providing extra information about the internal state of the filter
+ */
+
+static bool isPositionStable(const estimatorKalmanStorage_t* storage, const float maxStdDev) {
+  return storage->P[STATE_X][STATE_X] < maxStdDev
+      && storage->P[STATE_Y][STATE_Y] < maxStdDev
+      && storage->P[STATE_Z][STATE_Z] < maxStdDev;
+}
+
+/*
  * Getters
  */
 
@@ -848,13 +861,27 @@ static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
   };
 }
 
-estimatorKalmanEngine_t estimatorKalmanEngine = {
+const estimatorKalmanConstants_t estimatorKalmanConstants = {
+  .stdDevInitialFlat = {
+    .position = { .x = 100, .y = 100, .z = 1 },
+    .velocity = { .x = 0.01, .y = 0.01, .z = 0.01 },
+    .angularVelocity = { .x = 0.01, .y = 0.01, .z = 0.01 }
+  }
+};
+
+const estimatorKalmanEngine_t estimatorKalmanEngine = {
+  .constants = {
+    .maximumAbsolutePosition = MAX_POSITION,
+    .maximumAbsoluteVelocity = MAX_VELOCITY,
+    .maximumAbsoluteAngularVelocity = MAX_ANGULAR_VELOCITY
+  },
   .init = init,
   .update = update,
   .enqueueAcceleration = enqueueAcceleration,
   .enqueueAngularVelocity = enqueueAngularVelocity,
   .enqueuePosition = enqueuePosition,
   .enqueueDistance = enqueueDistance,
+  .isPositionStable = isPositionStable,
   .getPosition = getPosition,
   .getState = getState
 };

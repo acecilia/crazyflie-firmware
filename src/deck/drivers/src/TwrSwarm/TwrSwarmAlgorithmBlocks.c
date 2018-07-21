@@ -9,7 +9,6 @@
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
-// #include "debug.h"
 #endif
 
 // #pragma GCC diagnostic warning "-Wconversion"
@@ -431,14 +430,16 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   estimatorKalmanEnqueueTOF(&tofData);
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-  if(neighbourData->estimatorKalmanStorage.isInit) {
+  if(neighbourData->estimator.isInit) {
     point_t pos;
-    estimatorKalmanEngine.getPosition(&neighbourData->estimatorKalmanStorage, &pos);
+    estimatorKalmanEngine.getPosition(&neighbourData->estimator, &pos);
     debug.localRx = pos.x;
   }
   estimatorKalmanGetEstimatedPos(&debug.position);
 #endif
 }
+
+#define DISTANCE_STD_DEV (float) 0.01
 
 void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
   distanceMeasurement_t distances[NEIGHBOUR_STORAGE_CAPACITY];
@@ -451,15 +452,18 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
         tofData_t* tofData = findTofData(tofStorage, neighbourData->id, neighboursStorage[i].id, false);
 
         if (tofData != NULL) {
-          if(neighboursStorage[i].estimatorKalmanStorage.isInit) {
+          estimatorKalmanStorage_t* estimator = &neighboursStorage[i].estimator;
+          bool filterIsInit = estimator->isInit;
+          bool positionIsStable = estimatorKalmanEngine.isPositionStable(estimator, DISTANCE_STD_DEV);
+          if(filterIsInit && positionIsStable) {
             point_t positionData;
-            estimatorKalmanEngine.getPosition(&neighboursStorage[i].estimatorKalmanStorage, &positionData);
+            estimatorKalmanEngine.getPosition(estimator, &positionData);
 
             distances[distancesIndex].x = positionData.x;
             distances[distancesIndex].y = positionData.y;
             distances[distancesIndex].z = positionData.z;
             distances[distancesIndex].distance = calculateDistance(tofData->tof);
-            distances[distancesIndex].stdDev = 0.01;
+            distances[distancesIndex].stdDev = DISTANCE_STD_DEV;
             distancesIndex++;
           }
         }
@@ -470,66 +474,60 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
   unsigned int neighbours = countNeighbours(neighboursStorage);
 
   // Give the initial position of the drone
-  if(!neighbourData->estimatorKalmanStorage.isInit) {
-    const velocity_t initialVelocity = { .x = 0, .y = 0, .z = 0 };
-    if(neighbours == 1) {
-      // Set the first discovered copter as the (0, 0, 0) point of the about-to-be-defined coordinate system
-      point_t initialPosition = { .x = 0, .y = 0, .z = 0 };
-      estimatorKalmanEngine.init(&neighbourData->estimatorKalmanStorage, initialPosition, initialVelocity);
-    } else if(neighbours == 2 && distancesIndex == 1) {
-      // Set the second discovered copter in the positive part of the x axis
-      float x = distances[0].x + distances[0].distance;
-      point_t initialPosition = { .x = x, .y = 0, .z = 0 };
-      estimatorKalmanEngine.init(&neighbourData->estimatorKalmanStorage, initialPosition, initialVelocity);
-    } else if(neighbours == 3 && distancesIndex == 2) {
-      // Set the third discovered copter in the possitive part of the y axis
-      // TODO: trilaterate the initial position related to the other drones, instead of giving fixed values
-      point_t initialPosition = { .x = 0, .y = 1, .z = 0 };
-      estimatorKalmanEngine.init(&neighbourData->estimatorKalmanStorage, initialPosition, initialVelocity);
-    } else if(neighbours == 4 && distancesIndex == 3) {
-      // Set the fourth discovered copter in the possitive part of the z axis
-      // TODO: trilaterate the initial position related to the other drones, instead of giving fixed values
-      point_t initialPosition = { .x = 0, .y = 0, .z = 1 };
-      estimatorKalmanEngine.init(&neighbourData->estimatorKalmanStorage, initialPosition, initialVelocity);
-      // TODO: set coordinate system already created
-    } else if(false /* coordinate system already created */) {
-      // TODO: trilaterate the initial position related to the other drones, instead of giving fixed values
-      point_t initialPosition = { .x = 0, .y = 0, .z = 0 };
-      estimatorKalmanEngine.init(&neighbourData->estimatorKalmanStorage, initialPosition, initialVelocity);
-    } else {
-      // There are not enough distances to calculate the position, and without an itialized estimatorKalmanStorage we can not continue
-      return;
-    }
+  if(!neighbourData->estimator.isInit) {
+    /*
+     * In order to avoid trilaterating an initial position, we better pass a "fake" value with very high standard deviation and wait until further meassurements stabilize the position estimation
+     */
+
+    // In Meters
+    const vec3Measurement_t initialPosition = {
+      .value = { .x = 0, .y = 0, .z = 0 },
+      .stdDev = { .x = 10, .y = 10, .z = 10 }
+    };
+    // In m/s
+    const vec3Measurement_t initialVelocity = {
+      .value = { .x = 0, .y = 0, .z = 0 },
+      .stdDev = { .x = 10, .y = 10, .z = 10 }
+    };
+    // In rad/s
+    const vec3Measurement_t initialAttitude = {
+      .value = { .x = 0, .y = 0, .z = 0 },
+      .stdDev = { .x = 30, .y = 30, .z = 30 }
+    };
+
+    estimatorKalmanEngine.init(&neighbourData->estimator, &initialPosition, &initialVelocity, &initialAttitude);
   }
 
   // Assume some position values while building the coordinate system
   if(true /* is building the coordinate system*/) {
     if(neighbours == 1) {
-      // Already set an initial position of (0, 0, 0)
+      // Simulate 0D: the only drone known will be (0, 0, 0)
+      positionMeasurement_t position = { .x = 0, .y = 0, .z = 0, .stdDev = 0 };
+      estimatorKalmanEngine.enqueuePosition(&neighbourData->estimator, &position);
     } if(neighbours == 2) {
       // Simulate 1D
       positionMeasurement_t position = { .x = NAN, .y = 0, .z = 0, .stdDev = 0 };
-      estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, &position);
+      estimatorKalmanEngine.enqueuePosition(&neighbourData->estimator, &position);
     } else if (neighbours == 3) {
       // Simulate 2D
       positionMeasurement_t position = { .x = NAN, .y = NAN, .z = 0, .stdDev = 0 };
-      estimatorKalmanEngine.enqueuePosition(&neighbourData->estimatorKalmanStorage, &position);
+      estimatorKalmanEngine.enqueuePosition(&neighbourData->estimator, &position);
     }
   }
 
   // Pass the known data to the estimator and enqueue it, so it can calculate the position in the next update
   for(unsigned int i = 0; i < distancesIndex; i++) {
-    estimatorKalmanEngine.enqueueDistance(&neighbourData->estimatorKalmanStorage, &distances[i]);
+    estimatorKalmanEngine.enqueueDistance(&neighbourData->estimator, &distances[i]);
   }
 
   // Use all the enqueued data to calculate the position
-  estimatorKalmanEngine.update(&neighbourData->estimatorKalmanStorage);
+  estimatorKalmanEngine.update(&neighbourData->estimator);
 }
 
 void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, tofData_t tofStorage[]) {
-  if(neighbourData->estimatorKalmanStorage.isInit) {
+  if(neighbourData->estimator.isInit) {
     point_t remotePosition;
-    estimatorKalmanEngine.getPosition(&neighbourData->estimatorKalmanStorage, &remotePosition);
+    estimatorKalmanEngine.getPosition(&neighbourData->estimator, &remotePosition);
 
     tofData_t* tofData = findTofData(tofStorage, localId, remoteId, false);
     if(tofData != NULL) {

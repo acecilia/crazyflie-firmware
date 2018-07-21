@@ -57,7 +57,7 @@ typedef struct {
   clockCorrectionStorage_t clockCorrectionStorage;
   uint8_t expectedSeqNr; // Expected sequence number for the received packet
 
-  estimatorKalmanStorage_t estimatorKalmanStorage; // Used to obtain the position of the neighbour
+  estimatorKalmanStorage_t estimator; // Used to obtain the position of the neighbour
 } neighbourData_t;
 
 /**
