@@ -4,8 +4,6 @@
 #include "FreeRTOS.h"
 #include "timers.h"
 
-#include "debug.h"
-
 static void blink(led_t led);
 static void init();
 
@@ -101,8 +99,6 @@ static void logTimerCallback(xTimerHandle timer) {
   debug.clockAcceptanceRate = (debug.clockUpdated - debug.clockNotAccepted) * 100 / debug.clockUpdated;
   debug.clockUpdated = 0;
   debug.clockNotAccepted = 0;
-
-  DEBUG_PRINT("Dict: %ld\n", debug.dctCount);
 }
 
 static void init() {
