@@ -107,6 +107,7 @@ static float measNoiseGyro_yaw = 0.1f; // radians per second
  */
 
 #define RAD_TO_DEG (180.0f/PI)
+#define G_TO_M_PER_S (9.81f)
 
 static inline void mat_trans(const arm_matrix_instance_f32 * pSrc, arm_matrix_instance_f32 * pDst) {
   DEBUG_KALMAN_ASSERT(ARM_MATH_SUCCESS == arm_mat_trans_f32(pSrc, pDst));
@@ -435,9 +436,9 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_Y][STATE_D0] = (storage->S[STATE_PY]*storage->R[1][2] - storage->S[STATE_PZ]*storage->R[1][1])*dt;
   A[STATE_Z][STATE_D0] = (storage->S[STATE_PY]*storage->R[2][2] - storage->S[STATE_PZ]*storage->R[2][1])*dt;
 
-  A[STATE_X][STATE_D1] = (- storage->S[STATE_PX]*storage->R[0][2] + storage->S[STATE_PZ]*storage->R[0][0])*dt;
-  A[STATE_Y][STATE_D1] = (- storage->S[STATE_PX]*storage->R[1][2] + storage->S[STATE_PZ]*storage->R[1][0])*dt;
-  A[STATE_Z][STATE_D1] = (- storage->S[STATE_PX]*storage->R[2][2] + storage->S[STATE_PZ]*storage->R[2][0])*dt;
+  A[STATE_X][STATE_D1] = (storage->S[STATE_PZ]*storage->R[0][0] - storage->S[STATE_PX]*storage->R[0][2])*dt;
+  A[STATE_Y][STATE_D1] = (storage->S[STATE_PZ]*storage->R[1][0] - storage->S[STATE_PX]*storage->R[1][2])*dt;
+  A[STATE_Z][STATE_D1] = (storage->S[STATE_PZ]*storage->R[2][0] - storage->S[STATE_PX]*storage->R[2][2])*dt;
 
   A[STATE_X][STATE_D2] = (storage->S[STATE_PX]*storage->R[0][1] - storage->S[STATE_PY]*storage->R[0][0])*dt;
   A[STATE_Y][STATE_D2] = (storage->S[STATE_PX]*storage->R[1][1] - storage->S[STATE_PY]*storage->R[1][0])*dt;
@@ -445,28 +446,28 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
 
   // Body-frame velocity from body-frame velocity
   A[STATE_PX][STATE_PX] = 1; // Drag negligible
-  A[STATE_PY][STATE_PX] =-gyro->z*dt;
+  A[STATE_PY][STATE_PX] = gyro->z*dt * -1;
   A[STATE_PZ][STATE_PX] = gyro->y*dt;
 
   A[STATE_PX][STATE_PY] = gyro->z*dt;
   A[STATE_PY][STATE_PY] = 1; // Drag negligible
-  A[STATE_PZ][STATE_PY] =-gyro->x*dt;
+  A[STATE_PZ][STATE_PY] = gyro->x*dt * -1;
 
-  A[STATE_PX][STATE_PZ] =-gyro->y*dt;
+  A[STATE_PX][STATE_PZ] = gyro->y*dt * -1;
   A[STATE_PY][STATE_PZ] = gyro->x*dt;
   A[STATE_PZ][STATE_PZ] = 1; // Drag negligible
 
   // Body-frame velocity from attitude error
   A[STATE_PX][STATE_D0] = 0;
-  A[STATE_PY][STATE_D0] = storage->R[2][2]*dt;
-  A[STATE_PZ][STATE_D0] = storage->R[2][1]*dt;
+  A[STATE_PY][STATE_D0] = storage->R[2][2]*dt * G_TO_M_PER_S * -1;
+  A[STATE_PZ][STATE_D0] = storage->R[2][1]*dt * G_TO_M_PER_S;
 
-  A[STATE_PX][STATE_D1] = storage->R[2][2]*dt;
+  A[STATE_PX][STATE_D1] = storage->R[2][2]*dt * G_TO_M_PER_S;
   A[STATE_PY][STATE_D1] = 0;
-  A[STATE_PZ][STATE_D1] = storage->R[2][0]*dt;
+  A[STATE_PZ][STATE_D1] = storage->R[2][0]*dt * G_TO_M_PER_S * -1;
 
-  A[STATE_PX][STATE_D2] = storage->R[2][1]*dt;
-  A[STATE_PY][STATE_D2] = storage->R[2][0]*dt;
+  A[STATE_PX][STATE_D2] = storage->R[2][1]*dt * G_TO_M_PER_S * -1;
+  A[STATE_PY][STATE_D2] = storage->R[2][0]*dt * G_TO_M_PER_S;
   A[STATE_PZ][STATE_D2] = 0;
 
   // Attitude error from attitude error
@@ -509,29 +510,25 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   // Process noise is added after the return from the prediction step
 
   // ====== PREDICTION STEP ======
-
-  float dx, dy, dz;
-  float tmpSPX, tmpSPY, tmpSPZ;
-
   // Position updates in the body frame (will be rotated to inertial frame)
-  dx = storage->S[STATE_PX] * dt + acc->x * dt2 / 2.0f;
-  dy = storage->S[STATE_PY] * dt + acc->y * dt2 / 2.0f;
-  dz = storage->S[STATE_PZ] * dt + acc->z * dt2 / 2.0f;
+  float dx = storage->S[STATE_PX] * dt + acc->x * dt2 / 2.0f;
+  float dy = storage->S[STATE_PY] * dt + acc->y * dt2 / 2.0f;
+  float dz = storage->S[STATE_PZ] * dt + acc->z * dt2 / 2.0f;
 
   // Position update
   storage->S[STATE_X] += storage->R[0][0] * dx + storage->R[0][1] * dy + storage->R[0][2] * dz;
   storage->S[STATE_Y] += storage->R[1][0] * dx + storage->R[1][1] * dy + storage->R[1][2] * dz;
-  storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz;
+  storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz; //  - GRAVITY_MAGNITUDE * dt2 / 2.0f; -- WHY??!!
 
   // Keep previous time step's state for the update
-  tmpSPX = storage->S[STATE_PX];
-  tmpSPY = storage->S[STATE_PY];
-  tmpSPZ = storage->S[STATE_PZ];
+  float tmpSPX = storage->S[STATE_PX];
+  float tmpSPY = storage->S[STATE_PY];
+  float tmpSPZ = storage->S[STATE_PZ];
 
   // Body-velocity update: accelerometers - gyros cross velocity - gravity in body frame
-  storage->S[STATE_PX] += dt * (acc->x + gyro->z * tmpSPY - gyro->y * tmpSPZ - storage->R[2][0]);
-  storage->S[STATE_PY] += dt * (acc->y - gyro->z * tmpSPX + gyro->x * tmpSPZ - storage->R[2][1]);
-  storage->S[STATE_PZ] += dt * (acc->z + gyro->y * tmpSPX - gyro->x * tmpSPY - storage->R[2][2]);
+  storage->S[STATE_PX] += dt * (acc->x + gyro->z * tmpSPY - gyro->y * tmpSPZ - storage->R[2][0]*G_TO_M_PER_S);
+  storage->S[STATE_PY] += dt * (acc->y - gyro->z * tmpSPX + gyro->x * tmpSPZ - storage->R[2][1]*G_TO_M_PER_S);
+  storage->S[STATE_PZ] += dt * (acc->z + gyro->y * tmpSPX - gyro->x * tmpSPY - storage->R[2][2]*G_TO_M_PER_S);
 
   // acecilia. This check looks reasonable when we are sure that the frame is set in a way that S[STATE_Z] can not be less than zero, but: what if the (0, 0, 0) position of the frame is 1m over the floor? In that case, S[STATE_Z] CAN be less than zero. Thus, comment this for now
   /*
