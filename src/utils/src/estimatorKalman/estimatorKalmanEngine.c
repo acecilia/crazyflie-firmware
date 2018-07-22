@@ -11,14 +11,78 @@
 #include "math.h"
 #include "arm_math.h"
 
+#include "cfassert.h"
+#include "string.h"
+
 /**
- * Constants
+ * Debug helpers
  */
 
-#define RAD_TO_DEG (180.0f/PI)
+// If you want to remove safety checks to optimize speed, comment the line below
+#define DEBUG_KALMAN_ASSERT_ENABLE
+#ifdef DEBUG_KALMAN_ASSERT_ENABLE
+  #define DEBUG_KALMAN_ASSERT(condition) { \
+    configASSERT(condition); \
+  }
+#else
+  #define DEBUG_KALMAN_ASSERT(condition) {}
+#endif
+
+#ifdef DEBUG_KALMAN_ASSERT_ENABLE
+static void assertNotNan(estimatorKalmanStorage_t* storage, char *file, int line) {
+  int assertFailedAtLine = -1;
+
+  for(int i = 0; i < STATE_DIM; i++) {
+    if (isnan(storage->S[i])) {
+      assertFailedAtLine = __LINE__;
+    }
+  }
+
+  for(int i = 0; i < 3; i++) {
+    if (isnan(storage->q[i])) {
+      assertFailedAtLine = __LINE__;
+    }
+  }
+
+  for(int i = 0; i < STATE_DIM; i++) {
+    for(int j = 0; j < STATE_DIM; j++) {
+      if (isnan(storage->P[i][j])) {
+        assertFailedAtLine = __LINE__;
+      }
+    }
+  }
+
+  if(assertFailedAtLine >= 0) {
+    // Print the line where the function was called from, and also the line inside the function that failed
+    assertFail("Nan found, this is a bug", file, (line * 10000) + assertFailedAtLine);
+  }
+}
+#define DEBUG_KALMAN_ASSERT_NOT_NAN(storage) { \
+  assertNotNan(storage, __FILE__, __LINE__); \
+}
+#else
+  #define DEBUG_KALMAN_ASSERT_NOT_NAN(storage) {}
+#endif
+
+#ifdef DEBUG_KALMAN_ASSERT_ENABLE
+static void matrixAssertNotNan(arm_matrix_instance_f32* matrix, char *file, int line) {
+  for (int i = 0; i < matrix->numRows; i++) {
+    for(int j = 0; j < matrix->numCols; j++) {
+      if(isnan(matrix->pData[i * matrix->numRows + j])) {
+        assertFail("Nan found, this is a bug", file, line);
+      }
+    }
+  }
+}
+#define DEBUG_KALMAN_MATRIX_ASSERT_NOT_NAN(storage) { \
+  matrixAssertNotNan(storage, __FILE__, __LINE__); \
+}
+#else
+#define DEBUG_KALMAN_MATRIX_ASSERT_NOT_NAN(storage) {}
+#endif
 
 /**
- * Tuning parameters
+ * Constants
  */
 
 // The bounds on the covariance, these shouldn't be hit, but sometimes are... why?
@@ -42,54 +106,26 @@ static float measNoiseGyro_yaw = 0.1f; // radians per second
  * Supporting and utility functions
  */
 
+#define RAD_TO_DEG (180.0f/PI)
+
 static inline void mat_trans(const arm_matrix_instance_f32 * pSrc, arm_matrix_instance_f32 * pDst) {
-  configASSERT(ARM_MATH_SUCCESS == arm_mat_trans_f32(pSrc, pDst));
+  DEBUG_KALMAN_ASSERT(ARM_MATH_SUCCESS == arm_mat_trans_f32(pSrc, pDst));
 }
 static inline void mat_inv(const arm_matrix_instance_f32 * pSrc, arm_matrix_instance_f32 * pDst) {
-  configASSERT(ARM_MATH_SUCCESS == arm_mat_inverse_f32(pSrc, pDst));
+  DEBUG_KALMAN_ASSERT(ARM_MATH_SUCCESS == arm_mat_inverse_f32(pSrc, pDst));
 }
 static inline void mat_mult(const arm_matrix_instance_f32 * pSrcA, const arm_matrix_instance_f32 * pSrcB, arm_matrix_instance_f32 * pDst) {
-  configASSERT(ARM_MATH_SUCCESS == arm_mat_mult_f32(pSrcA, pSrcB, pDst));
+  DEBUG_KALMAN_ASSERT(ARM_MATH_SUCCESS == arm_mat_mult_f32(pSrcA, pSrcB, pDst));
 }
 static inline float arm_sqrt(float32_t in) {
   float pOut = 0;
-  arm_status result = arm_sqrt_f32(in, &pOut);
-  configASSERT(ARM_MATH_SUCCESS == result);
+  DEBUG_KALMAN_ASSERT(ARM_MATH_SUCCESS == arm_sqrt_f32(in, &pOut));
   return pOut;
 }
 
 /**
  * Other functions
  */
-
-#define KALMAN_NAN_CHECK
-#ifdef KALMAN_NAN_CHECK
-static void stateEstimatorAssertNotNaN(estimatorKalmanStorage_t* storage) {
-  for(int i = 0; i < STATE_DIM; i++) {
-    if (isnan(storage->S[i])) {
-      configASSERT(false);
-    }
-  }
-
-  for(int i = 0; i < 3; i++) {
-    if (isnan(storage->q[i])) {
-      configASSERT(false);
-    }
-  }
-
-  for(int i = 0; i < STATE_DIM; i++) {
-    for(int j = 0; j < STATE_DIM; j++) {
-      if (isnan(storage->P[i][j])) {
-        configASSERT(false);
-      }
-    }
-  }
-}
-#else
-static void stateEstimatorAssertNotNaN(estimatorKalmanStorage_t* storage) {
-  return;
-}
-#endif
 
 // #define KALMAN_DECOUPLE_XY
 #ifdef KALMAN_DECOUPLE_XY
@@ -117,7 +153,7 @@ static void decoupleState(estimatorKalmanStorage_t* storage, stateIdx_t state) {
 
 // The Kalman gain as a column vector: the K parameter in the kalman filter update function
 static float K[STATE_DIM];
-static arm_matrix_instance_f32 Km = {STATE_DIM, 1, (float *)K};
+static arm_matrix_instance_f32 Km = {STATE_DIM, 1, K};
 
 // The H' parameter in the kalman filter update function (transposed)
 static float Htd[STATE_DIM * 1];
@@ -174,22 +210,22 @@ static bool enqueueData(xQueueHandle queue, const void* data) {
 }
 
 static bool enqueueAcceleration(const estimatorKalmanStorage_t* storage, const Axis3f* acceleration) {
-  ASSERT(storage->isInit);
+  DEBUG_KALMAN_ASSERT(storage->isInit);
   return enqueueData(storage->positionDataQueue, (void*)acceleration);
 }
 
 static bool enqueueAngularVelocity(const estimatorKalmanStorage_t* storage, const Axis3f* angularVelocity) {
-  ASSERT(storage->isInit);
+  DEBUG_KALMAN_ASSERT(storage->isInit);
   return enqueueData(storage->distanceDataQueue, (void*)angularVelocity);
 }
 
 static bool enqueuePosition(const estimatorKalmanStorage_t* storage, const positionMeasurement_t* position) {
-  ASSERT(storage->isInit);
+  DEBUG_KALMAN_ASSERT(storage->isInit);
   return enqueueData(storage->positionDataQueue, (void*)position);
 }
 
 static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance) {
-  ASSERT(storage->isInit);
+  DEBUG_KALMAN_ASSERT(storage->isInit);
   return enqueueData(storage->distanceDataQueue, (void*)distance);
 }
 
@@ -274,7 +310,10 @@ static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* ini
   // Initialize covariance matrix
   storage->Pm = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->P };
 
+  storage->lastUpdate = xTaskGetTickCount();
   storage->isInit = true;
+
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
 static void addProcessNoise(estimatorKalmanStorage_t* storage, Axis3f *accStdDev, Axis3f *velStdDev, Axis3f *posStdDev, Axis3f *angularVelStdDev, Axis3f *angularPosStdDev, float dt) {
@@ -308,7 +347,34 @@ static void addProcessNoise(estimatorKalmanStorage_t* storage, Axis3f *accStdDev
     }
   }
 
-  stateEstimatorAssertNotNaN(storage);
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
+}
+
+/**
+ Attitude update: compute the attitude quaternion values in [w,x,y,z] order
+ */
+static void updateAttitudeQuaternion(estimatorKalmanStorage_t* storage, const float dtwx, const float dtwy, const float dtwz) {
+  DEBUG_KALMAN_ASSERT(dtwx != 0 || dtwy != 0 || dtwz != 0);
+
+  float angle = arm_sqrt(dtwx*dtwx + dtwy*dtwy + dtwz*dtwz);
+  float ca = arm_cos_f32(angle/2.0f);
+  float sa = arm_sin_f32(angle/2.0f);
+  float dq[4] = {ca, sa*dtwx/angle, sa*dtwy/angle, sa*dtwz/angle};
+
+  // Rotate the quad's attitude by the delta quaternion vector computed above
+  float tmpq0 = dq[0]*storage->q[0] - dq[1]*storage->q[1] - dq[2]*storage->q[2] - dq[3]*storage->q[3];
+  float tmpq1 = dq[1]*storage->q[0] + dq[0]*storage->q[1] + dq[3]*storage->q[2] - dq[2]*storage->q[3];
+  float tmpq2 = dq[2]*storage->q[0] - dq[3]*storage->q[1] + dq[0]*storage->q[2] + dq[1]*storage->q[3];
+  float tmpq3 = dq[3]*storage->q[0] + dq[2]*storage->q[1] - dq[1]*storage->q[2] + dq[0]*storage->q[3];
+
+  // Normalize and store the result
+  float norm = arm_sqrt(tmpq0*tmpq0 + tmpq1*tmpq1 + tmpq2*tmpq2 + tmpq3*tmpq3);
+  storage->q[0] = tmpq0/norm;
+  storage->q[1] = tmpq1/norm;
+  storage->q[2] = tmpq2/norm;
+  storage->q[3] = tmpq3/norm;
+
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
 static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro, float dt) {
@@ -333,6 +399,8 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
    * since error information is incorporated into R after each Kalman update.
    */
 
+  DEBUG_KALMAN_ASSERT(dt > 0);
+
   float dt2 = dt*dt;
 
   // ====== DYNAMICS LINEARIZATION ======
@@ -349,7 +417,7 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_D1][STATE_D1] = 1;
   A[STATE_D2][STATE_D2] = 1;
 
-  // position from body-frame velocity
+  // Position from body-frame velocity
   A[STATE_X][STATE_PX] = storage->R[0][0]*dt;
   A[STATE_Y][STATE_PX] = storage->R[1][0]*dt;
   A[STATE_Z][STATE_PX] = storage->R[2][0]*dt;
@@ -362,7 +430,7 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_Y][STATE_PZ] = storage->R[1][2]*dt;
   A[STATE_Z][STATE_PZ] = storage->R[2][2]*dt;
 
-  // position from attitude error
+  // Position from attitude error
   A[STATE_X][STATE_D0] = (storage->S[STATE_PY]*storage->R[0][2] - storage->S[STATE_PZ]*storage->R[0][1])*dt;
   A[STATE_Y][STATE_D0] = (storage->S[STATE_PY]*storage->R[1][2] - storage->S[STATE_PZ]*storage->R[1][1])*dt;
   A[STATE_Z][STATE_D0] = (storage->S[STATE_PY]*storage->R[2][2] - storage->S[STATE_PZ]*storage->R[2][1])*dt;
@@ -375,7 +443,7 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_Y][STATE_D2] = (storage->S[STATE_PX]*storage->R[1][1] - storage->S[STATE_PY]*storage->R[1][0])*dt;
   A[STATE_Z][STATE_D2] = (storage->S[STATE_PX]*storage->R[2][1] - storage->S[STATE_PY]*storage->R[2][0])*dt;
 
-  // body-frame velocity from body-frame velocity
+  // Body-frame velocity from body-frame velocity
   A[STATE_PX][STATE_PX] = 1; // Drag negligible
   A[STATE_PY][STATE_PX] =-gyro->z*dt;
   A[STATE_PZ][STATE_PX] = gyro->y*dt;
@@ -388,7 +456,7 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_PY][STATE_PZ] = gyro->x*dt;
   A[STATE_PZ][STATE_PZ] = 1; // Drag negligible
 
-  // body-frame velocity from attitude error
+  // Body-frame velocity from attitude error
   A[STATE_PX][STATE_D0] = 0;
   A[STATE_PY][STATE_D0] = storage->R[2][2]*dt;
   A[STATE_PZ][STATE_D0] = storage->R[2][1]*dt;
@@ -401,7 +469,7 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_PY][STATE_D2] = storage->R[2][0]*dt;
   A[STATE_PZ][STATE_D2] = 0;
 
-  // attitude error from attitude error
+  // Attitude error from attitude error
   /**
    * At first glance, it may not be clear where the next values come from, since they do not appear directly in the
    * dynamics. In this prediction step, we skip the step of first updating attitude-error, and then incorporating the
@@ -465,54 +533,32 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   storage->S[STATE_PY] += dt * (acc->y - gyro->z * tmpSPX + gyro->x * tmpSPZ - storage->R[2][1]);
   storage->S[STATE_PZ] += dt * (acc->z + gyro->y * tmpSPX - gyro->x * tmpSPY - storage->R[2][2]);
 
+  // acecilia. This check looks reasonable when we are sure that the frame is set in a way that S[STATE_Z] can not be less than zero, but: what if the (0, 0, 0) position of the frame is 1m over the floor? In that case, S[STATE_Z] CAN be less than zero. Thus, comment this for now
+  /*
   if(storage->S[STATE_Z] < 0) {
     storage->S[STATE_Z] = 0;
     storage->S[STATE_PX] = 0;
     storage->S[STATE_PY] = 0;
     storage->S[STATE_PZ] = 0;
   }
+  */
 
-  // Attitude update (rotate by gyroscope), we do this in quaternions this is the gyroscope angular velocity integrated over the sample period
+  // Attitude update (rotate by gyroscope), we do this in quaternions. This is the gyroscope angular velocity integrated over the sample period
   float dtwx = dt*gyro->x;
   float dtwy = dt*gyro->y;
   float dtwz = dt*gyro->z;
-
-  // Compute the quaternion values in [w,x,y,z] order
-  if(dtwx != 0 && dtwy != 0 && dtwz != 0) {
-    float angle = arm_sqrt(dtwx*dtwx + dtwy*dtwy + dtwz*dtwz);
-    float ca = arm_cos_f32(angle/2.0f);
-    float sa = arm_sin_f32(angle/2.0f);
-    float dq[4] = {ca , sa*dtwx/angle , sa*dtwy/angle , sa*dtwz/angle};
-
-    // Rotate the quad's attitude by the delta quaternion vector computed above
-    float tmpq0 = (dq[0]*storage->q[0] - dq[1]*storage->q[1] - dq[2]*storage->q[2] - dq[3]*storage->q[3]);
-    float tmpq1 = (1.0f)*(dq[1]*storage->q[0] + dq[0]*storage->q[1] + dq[3]*storage->q[2] - dq[2]*storage->q[3]);
-    float tmpq2 = (1.0f)*(dq[2]*storage->q[0] - dq[3]*storage->q[1] + dq[0]*storage->q[2] + dq[1]*storage->q[3]);
-    float tmpq3 = (1.0f)*(dq[3]*storage->q[0] + dq[2]*storage->q[1] - dq[1]*storage->q[2] + dq[0]*storage->q[3]);
-
-    // Normalize and store the result
-    float norm = arm_sqrt(tmpq0*tmpq0 + tmpq1*tmpq1 + tmpq2*tmpq2 + tmpq3*tmpq3);
-    storage->q[0] = tmpq0/norm;
-    storage->q[1] = tmpq1/norm;
-    storage->q[2] = tmpq2/norm;
-    storage->q[3] = tmpq3/norm;
-  } else {
-    storage->q[0] = 0;
-    storage->q[1] = 0;
-    storage->q[2] = 0;
-    storage->q[3] = 0;
+  if(dtwx != 0 || dtwy != 0 || dtwz != 0) {
+    updateAttitudeQuaternion(storage, dtwx, dtwy, dtwz);
   }
 
-  stateEstimatorAssertNotNaN(storage);
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
 static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise) {
   // Perform some checks in the input
-  configASSERT(Hm->numRows == 1);
-  configASSERT(Hm->numCols == STATE_DIM);
-  for (int i=0; i<Hm->numCols; i++) {
-    configASSERT(!isnan(Hm->pData[i]));
-  }
+  DEBUG_KALMAN_ASSERT(Hm->numRows == 1);
+  DEBUG_KALMAN_ASSERT(Hm->numCols == STATE_DIM);
+  DEBUG_KALMAN_MATRIX_ASSERT_NOT_NAN(&Htm);
 
   // ====== INNOVATION COVARIANCE ======
 
@@ -522,16 +568,18 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
   for (int i=0; i<STATE_DIM; i++) { // Add the element of HPH' to the above
     HPHt += Hm->pData[i]*PHtd[i]; // this obviously only works if the update is scalar (as in this function)
   }
-  configASSERT(!isnan(HPHt));
+  DEBUG_KALMAN_ASSERT(!isnan(HPHt));
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 
   // ====== MEASUREMENT UPDATE ======
   // Calculate the Kalman gain and perform the state update
   float R = powf(stdMeasNoise, 2);
+  float HPHt_R = HPHt + R; // (HPH' + R )
   for (int i=0; i<STATE_DIM; i++) {
-    K[i] = PHtd[i]/(HPHt + R); // kalman gain = (PH' (HPH' + R )^-1)
+    K[i] = PHtd[i]/HPHt_R; // kalman gain = (PH' (HPH' + R )^-1)
     storage->S[i] = storage->S[i] + K[i] * error; // state update
   }
-  stateEstimatorAssertNotNaN(storage);
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 
   // ====== COVARIANCE UPDATE ======
   mat_mult(&Km, Hm, &tmpNN1m); // KH
@@ -541,7 +589,7 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
   mat_trans(&tmpNN1m, &tmpNN2m); // (KH - I)'
   mat_mult(&tmpNN1m, &storage->Pm, &tmpNN3m); // (KH - I)*P
   mat_mult(&tmpNN3m, &tmpNN2m, &storage->Pm); // (KH - I)*P*(KH - I)'
-  stateEstimatorAssertNotNaN(storage);
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 
   // add the measurement variance and ensure boundedness and symmetry
   // TODO: Why would it hit these bounds? Needs to be investigated.
@@ -559,7 +607,7 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
     }
   }
 
-  stateEstimatorAssertNotNaN(storage);
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
 static void updateWithPosition(estimatorKalmanStorage_t* storage, positionMeasurement_t* xyz) {
@@ -613,23 +661,7 @@ static void finalize(estimatorKalmanStorage_t* storage) {
 
   // Move attitude error into attitude if any of the angle errors are large enough
   if ((fabsf(v0) > 0.1e-3f || fabsf(v1) > 0.1e-3f || fabsf(v2) > 0.1e-3f) && (fabsf(v0) < 10 && fabsf(v1) < 10 && fabsf(v2) < 10)) {
-    float angle = arm_sqrt(v0*v0 + v1*v1 + v2*v2);
-    float ca = arm_cos_f32(angle / 2.0f);
-    float sa = arm_sin_f32(angle / 2.0f);
-    float dq[4] = {ca, sa * v0 / angle, sa * v1 / angle, sa * v2 / angle};
-
-    // rotate the quad's attitude by the delta quaternion vector computed above
-    float tmpq0 = dq[0] * storage->q[0] - dq[1] * storage->q[1] - dq[2] * storage->q[2] - dq[3] * storage->q[3];
-    float tmpq1 = dq[1] * storage->q[0] + dq[0] * storage->q[1] + dq[3] * storage->q[2] - dq[2] * storage->q[3];
-    float tmpq2 = dq[2] * storage->q[0] - dq[3] * storage->q[1] + dq[0] * storage->q[2] + dq[1] * storage->q[3];
-    float tmpq3 = dq[3] * storage->q[0] + dq[2] * storage->q[1] - dq[1] * storage->q[2] + dq[0] * storage->q[3];
-
-    // normalize and store the result
-    float norm = arm_sqrt(tmpq0 * tmpq0 + tmpq1 * tmpq1 + tmpq2 * tmpq2 + tmpq3 * tmpq3);
-    storage->q[0] = tmpq0 / norm;
-    storage->q[1] = tmpq1 / norm;
-    storage->q[2] = tmpq2 / norm;
-    storage->q[3] = tmpq3 / norm;
+    updateAttitudeQuaternion(storage, v0, v1, v2);
 
     /** Rotate the covariance, since we've rotated the body
      *
@@ -718,12 +750,10 @@ static void finalize(estimatorKalmanStorage_t* storage) {
     }
   }
 
-  stateEstimatorAssertNotNaN(storage);
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
 static void update(estimatorKalmanStorage_t* storage) {
-  uint32_t tick = xTaskGetTickCount(); // would be nice if this had a precision higher than 1ms...
-
 #ifdef KALMAN_DECOUPLE_XY
   // Decouple position states
   decoupleState(storage, STATE_X);
@@ -732,17 +762,24 @@ static void update(estimatorKalmanStorage_t* storage) {
   decoupleState(storage, STATE_PY);
 #endif
 
+  uint32_t tick = xTaskGetTickCount(); // would be nice if this had a precision higher than 1ms...
+  float dt = (float)(tick - storage->lastUpdate)/configTICK_RATE_HZ;
+
+  // if dt == 0 means that the update function was called multiple times in the same ms: we do not have enough resolution on the clock to perform the prediction
+  if(dt == 0) {
+    return;
+  }
+
   /*
    * Prediction step + noise addition
    */
-
-  float dt = (float)((tick - storage->lastUpdate) / configTICK_RATE_HZ);
 
   Axis3f acceleration = {.x = 0, .y = 0, .z = 0 };
   bool accelerationDataReceived = false;
   while (hasAccelerationData(storage, &acceleration)) {
     accelerationDataReceived = true;
     // Accumulate acceleration. Not done because was not needed yet
+    DEBUG_KALMAN_ASSERT(false);
   }
 
   Axis3f angularVelocity = {.x = 0, .y = 0, .z = 0 };
@@ -750,6 +787,7 @@ static void update(estimatorKalmanStorage_t* storage) {
   while (hasAngularVelocityData(storage, &angularVelocity)) {
     angularVelocityDataReceived = true;
     // Accumulate angular velocity. Not done because was not needed yet
+    DEBUG_KALMAN_ASSERT(false);
   }
 
   predict(storage, &acceleration, &angularVelocity, dt);
@@ -789,7 +827,7 @@ static void update(estimatorKalmanStorage_t* storage) {
   // Save state to the storage
   storage->lastUpdate = tick;
 
-  stateEstimatorAssertNotNaN(storage);
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
 /*
@@ -807,7 +845,7 @@ static bool isPositionStable(const estimatorKalmanStorage_t* storage, const floa
  */
 
 static void getPosition(const estimatorKalmanStorage_t* storage, point_t* position) {
-  ASSERT(storage->isInit);
+  DEBUG_KALMAN_ASSERT(storage->isInit);
 
   position->x = storage->S[STATE_X];
   position->y = storage->S[STATE_Y];
@@ -815,7 +853,7 @@ static void getPosition(const estimatorKalmanStorage_t* storage, point_t* positi
 }
 
 static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
-  ASSERT(storage->isInit);
+  DEBUG_KALMAN_ASSERT(storage->isInit);
 
   uint32_t tick = xTaskGetTickCount();
 
