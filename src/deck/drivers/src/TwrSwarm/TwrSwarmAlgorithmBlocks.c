@@ -261,7 +261,7 @@ neighbourData_t* findNeighbourData(neighbourData_t storage[], const locoId_t id,
     storage[indexToInitialize].isInitialized = true;
     storage[indexToInitialize].id = id;
 
-    // TODO. Andres. Make a init function in the clockCorrection engine
+    // TODO. acecilia. Make a init function in the clockCorrection engine
     storage[indexToInitialize].clockCorrectionStorage = (clockCorrectionStorage_t){
       .clockCorrection = 1,
       .clockCorrectionBucket = 0
@@ -345,7 +345,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   
   for(unsigned int i = 0; i < rxPacket->header.payloadLength; i++) {
     if (rxPacket->payload[i].id == localId) {
-      // TODO: Andres. See what can we use the transmitted tof for
+      // TODO: acecilia. See what can we use the transmitted tof for
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
       debug.succededRangingPerSec++;

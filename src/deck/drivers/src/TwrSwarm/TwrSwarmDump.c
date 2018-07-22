@@ -1,11 +1,3 @@
-//
-//  TwrSwarmDump.c
-//  xcode
-//
-//  Created by Andres on 21/7/18.
-//  Copyright © 2018 bitcraze. All rights reserved.
-//
-
 #include "TwrSwarmDump.h"
 
 #include <stdbool.h>
