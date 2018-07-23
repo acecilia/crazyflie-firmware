@@ -247,6 +247,75 @@ static inline bool hasPositionData(estimatorKalmanStorage_t* storage, positionMe
 }
 
 /**
+ * Common functions used in the implementation
+ */
+
+static void moveNoiseToCovarianzeMatrixAndEnsureBoundedValuesAndSimmetry(estimatorKalmanStorage_t* storage, float* K, float* R) {
+  for (int i = 0; i < storage->Pm.numRows; i++) {
+    for (int j = i; j < storage->Pm.numCols; j++) {
+      float p = 0.5f * storage->P[i][j] + 0.5f * storage->P[j][i];
+      if(K != NULL && R != NULL) {
+        p += K[i] * (*R) * K[j]; // Add measurement noise if available
+      }
+      if (isnan(p) || p > MAX_COVARIANCE) {
+        storage->P[i][j] = storage->P[j][i] = MAX_COVARIANCE;
+      } else if (i == j && p < MIN_COVARIANCE) {
+        storage->P[i][j] = storage->P[j][i] = MIN_COVARIANCE;
+      } else {
+        storage->P[i][j] = storage->P[j][i] = p;
+      }
+    }
+  }
+}
+
+static void ensureBoundedValuesAndSimmetryForCovarianceMatrix(estimatorKalmanStorage_t* storage) {
+  moveNoiseToCovarianzeMatrixAndEnsureBoundedValuesAndSimmetry(storage, NULL, NULL);
+}
+
+static void ensureBoundedValuesForPositionAndVelocityStates(estimatorKalmanStorage_t* storage) {
+  for (int i=0; i<3; i++) {
+    if (storage->S[STATE_X+i] < -MAX_POSITION) {
+      storage->S[STATE_X+i] = -MAX_POSITION;
+    } else if (storage->S[STATE_X+i] > MAX_POSITION) {
+      storage->S[STATE_X+i] = MAX_POSITION;
+    }
+
+    if (storage->S[STATE_PX+i] < -MAX_VELOCITY) {
+      storage->S[STATE_PX+i] = -MAX_VELOCITY;
+    } else if (storage->S[STATE_PX+i] > MAX_VELOCITY) {
+      storage->S[STATE_PX+i] = MAX_VELOCITY;
+    }
+  }
+}
+
+/**
+ Attitude update: compute the attitude quaternion values in [w,x,y,z] order
+ */
+static void updateAttitudeQuaternion(estimatorKalmanStorage_t* storage, const float dtwx, const float dtwy, const float dtwz) {
+  DEBUG_KALMAN_ASSERT(dtwx != 0 || dtwy != 0 || dtwz != 0);
+
+  float angle = arm_sqrt(dtwx*dtwx + dtwy*dtwy + dtwz*dtwz);
+  float ca = arm_cos_f32(angle/2.0f);
+  float sa = arm_sin_f32(angle/2.0f);
+  float dq[4] = {ca, sa*dtwx/angle, sa*dtwy/angle, sa*dtwz/angle};
+
+  // Rotate the quad's attitude by the delta quaternion vector computed above
+  float tmpq0 = dq[0]*storage->q[0] - dq[1]*storage->q[1] - dq[2]*storage->q[2] - dq[3]*storage->q[3];
+  float tmpq1 = dq[1]*storage->q[0] + dq[0]*storage->q[1] + dq[3]*storage->q[2] - dq[2]*storage->q[3];
+  float tmpq2 = dq[2]*storage->q[0] - dq[3]*storage->q[1] + dq[0]*storage->q[2] + dq[1]*storage->q[3];
+  float tmpq3 = dq[3]*storage->q[0] + dq[2]*storage->q[1] - dq[1]*storage->q[2] + dq[0]*storage->q[3];
+
+  // Normalize and store the result
+  float norm = arm_sqrt(tmpq0*tmpq0 + tmpq1*tmpq1 + tmpq2*tmpq2 + tmpq3*tmpq3);
+  storage->q[0] = tmpq0/norm;
+  storage->q[1] = tmpq1/norm;
+  storage->q[2] = tmpq2/norm;
+  storage->q[3] = tmpq3/norm;
+
+  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
+}
+
+/**
  * Main Kalman Filter functions
  */
 
@@ -314,6 +383,8 @@ static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* ini
   storage->lastUpdate = xTaskGetTickCount();
   storage->isInit = true;
 
+  ensureBoundedValuesAndSimmetryForCovarianceMatrix(storage);
+
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
@@ -335,45 +406,7 @@ static void addProcessNoise(estimatorKalmanStorage_t* storage, Axis3f *accStdDev
     storage->P[STATE_D2][STATE_D2] += powf(angularVelStdDev->z*dt + angularPosStdDev->z, 2);
   }
 
-  for (int i=0; i<STATE_DIM; i++) {
-    for (int j=i; j<STATE_DIM; j++) {
-      float p = 0.5f*storage->P[i][j] + 0.5f*storage->P[j][i];
-      if (isnan(p) || p > MAX_COVARIANCE) {
-        storage->P[i][j] = storage->P[j][i] = MAX_COVARIANCE;
-      } else if ( i==j && p < MIN_COVARIANCE ) {
-        storage->P[i][j] = storage->P[j][i] = MIN_COVARIANCE;
-      } else {
-        storage->P[i][j] = storage->P[j][i] = p;
-      }
-    }
-  }
-
-  DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
-}
-
-/**
- Attitude update: compute the attitude quaternion values in [w,x,y,z] order
- */
-static void updateAttitudeQuaternion(estimatorKalmanStorage_t* storage, const float dtwx, const float dtwy, const float dtwz) {
-  DEBUG_KALMAN_ASSERT(dtwx != 0 || dtwy != 0 || dtwz != 0);
-
-  float angle = arm_sqrt(dtwx*dtwx + dtwy*dtwy + dtwz*dtwz);
-  float ca = arm_cos_f32(angle/2.0f);
-  float sa = arm_sin_f32(angle/2.0f);
-  float dq[4] = {ca, sa*dtwx/angle, sa*dtwy/angle, sa*dtwz/angle};
-
-  // Rotate the quad's attitude by the delta quaternion vector computed above
-  float tmpq0 = dq[0]*storage->q[0] - dq[1]*storage->q[1] - dq[2]*storage->q[2] - dq[3]*storage->q[3];
-  float tmpq1 = dq[1]*storage->q[0] + dq[0]*storage->q[1] + dq[3]*storage->q[2] - dq[2]*storage->q[3];
-  float tmpq2 = dq[2]*storage->q[0] - dq[3]*storage->q[1] + dq[0]*storage->q[2] + dq[1]*storage->q[3];
-  float tmpq3 = dq[3]*storage->q[0] + dq[2]*storage->q[1] - dq[1]*storage->q[2] + dq[0]*storage->q[3];
-
-  // Normalize and store the result
-  float norm = arm_sqrt(tmpq0*tmpq0 + tmpq1*tmpq1 + tmpq2*tmpq2 + tmpq3*tmpq3);
-  storage->q[0] = tmpq0/norm;
-  storage->q[1] = tmpq1/norm;
-  storage->q[2] = tmpq2/norm;
-  storage->q[3] = tmpq3/norm;
+  ensureBoundedValuesAndSimmetryForCovarianceMatrix(storage);
 
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
@@ -590,20 +623,7 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
 
   // add the measurement variance and ensure boundedness and symmetry
   // TODO: Why would it hit these bounds? Needs to be investigated.
-  for (int i=0; i<STATE_DIM; i++) {
-    for (int j=i; j<STATE_DIM; j++) {
-      float v = K[i] * R * K[j];
-      float p = 0.5f*storage->P[i][j] + 0.5f*storage->P[j][i] + v; // add measurement noise
-      if (isnan(p) || p > MAX_COVARIANCE) {
-        storage->P[i][j] = storage->P[j][i] = MAX_COVARIANCE;
-      } else if (i==j && p < MIN_COVARIANCE) {
-        storage->P[i][j] = storage->P[j][i] = MIN_COVARIANCE;
-      } else {
-        storage->P[i][j] = storage->P[j][i] = p;
-      }
-    }
-  }
-
+  moveNoiseToCovarianzeMatrixAndEnsureBoundedValuesAndSimmetry(storage, K, &R);
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
@@ -713,39 +733,16 @@ static void finalize(estimatorKalmanStorage_t* storage) {
   storage->R[2][1] = 2 * storage->q[2] * storage->q[3] + 2 * storage->q[0] * storage->q[1];
   storage->R[2][2] = powf(storage->q[0], 2) - powf(storage->q[1], 2) - powf(storage->q[2], 2) + powf(storage->q[3], 2);
 
-  // reset the attitude error
+  // Reset the attitude error
   storage->S[STATE_D0] = 0;
   storage->S[STATE_D1] = 0;
   storage->S[STATE_D2] = 0;
 
-  // constrain the states
-  for (int i=0; i<3; i++) {
-    if (storage->S[STATE_X+i] < -MAX_POSITION) {
-      storage->S[STATE_X+i] = -MAX_POSITION;
-    } else if (storage->S[STATE_X+i] > MAX_POSITION) {
-      storage->S[STATE_X+i] = MAX_POSITION;
-    }
+  // Constrain the states
+  ensureBoundedValuesForPositionAndVelocityStates(storage);
 
-    if (storage->S[STATE_PX+i] < -MAX_VELOCITY) {
-      storage->S[STATE_PX+i] = -MAX_VELOCITY;
-    } else if (storage->S[STATE_PX+i] > MAX_VELOCITY) {
-      storage->S[STATE_PX+i] = MAX_VELOCITY;
-    }
-  }
-
-  // enforce symmetry of the covariance matrix, and ensure the values stay bounded
-  for (int i=0; i<STATE_DIM; i++) {
-    for (int j=i; j<STATE_DIM; j++) {
-      float p = 0.5f*storage->P[i][j] + 0.5f*storage->P[j][i];
-      if (isnan(p) || p > MAX_COVARIANCE) {
-        storage->P[i][j] = storage->P[j][i] = MAX_COVARIANCE;
-      } else if (i==j && p < MIN_COVARIANCE) {
-        storage->P[i][j] = storage->P[j][i] = MIN_COVARIANCE;
-      } else {
-        storage->P[i][j] = storage->P[j][i] = p;
-      }
-    }
-  }
+  // Constrain the covariance matrix
+  ensureBoundedValuesAndSimmetryForCovarianceMatrix(storage);
 
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
@@ -854,7 +851,7 @@ static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
 
   uint32_t tick = xTaskGetTickCount();
 
-  // position state is already in world frame
+  // Position state is already in world frame
   state->position = (point_t){
     .timestamp = tick,
     .x = storage->S[STATE_X],
@@ -862,7 +859,7 @@ static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
     .z = storage->S[STATE_Z]
   };
 
-  // velocity is in body frame and needs to be rotated to world frame
+  // Velocity is in body frame and needs to be rotated to world frame
   state->velocity = (velocity_t){
     .timestamp = tick,
     .x = storage->R[0][0]*storage->S[STATE_PX] + storage->R[0][1]*storage->S[STATE_PY] + storage->R[0][2]*storage->S[STATE_PZ],
@@ -870,7 +867,7 @@ static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
     .z = storage->R[2][0]*storage->S[STATE_PX] + storage->R[2][1]*storage->S[STATE_PY] + storage->R[2][2]*storage->S[STATE_PZ]
   };
 
-  // convert the new attitude into Euler YPR
+  // Convert the new attitude into Euler YPR
   float yaw = atan2f(2*(storage->q[1]*storage->q[2]+storage->q[0]*storage->q[3]) , powf(storage->q[0], 2) + powf(storage->q[1], 2) - powf(storage->q[2], 2) - powf(storage->q[3], 2));
   float pitch = asinf(-2*(storage->q[1]*storage->q[3] - storage->q[0]*storage->q[2]));
   float roll = atan2f(2*(storage->q[2]*storage->q[3]+storage->q[0]*storage->q[1]) , powf(storage->q[0], 2) - powf(storage->q[1], 2) - powf(storage->q[2], 2) + powf(storage->q[3], 2));

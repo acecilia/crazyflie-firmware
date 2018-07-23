@@ -480,19 +480,22 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
      */
 
     // In Meters
+    float positionStdDev = estimatorKalmanEngine.constants.maximumAbsolutePosition;
     const vec3Measurement_t initialPosition = {
       .value = { .x = 0, .y = 0, .z = 0 },
-      .stdDev = { .x = 10, .y = 10, .z = 10 }
+      .stdDev = { .x = positionStdDev, .y = positionStdDev, .z = positionStdDev }
     };
     // In m/s
+    float velocityStdDev = estimatorKalmanEngine.constants.maximumAbsoluteVelocity;
     const vec3Measurement_t initialVelocity = {
       .value = { .x = 0, .y = 0, .z = 0 },
-      .stdDev = { .x = 10, .y = 10, .z = 10 }
+      .stdDev = { .x = velocityStdDev, .y = velocityStdDev, .z = velocityStdDev }
     };
     // In rad/s
+    float angularVelocityStdDev = estimatorKalmanEngine.constants.maximumAbsoluteAngularVelocity;
     const vec3Measurement_t initialAttitude = {
       .value = { .x = 0, .y = 0, .z = 0 },
-      .stdDev = { .x = 30, .y = 30, .z = 30 }
+      .stdDev = { .x = angularVelocityStdDev, .y = angularVelocityStdDev, .z = angularVelocityStdDev }
     };
 
     estimatorKalmanEngine.init(&neighbourData->estimator, &initialPosition, &initialVelocity, &initialAttitude);
