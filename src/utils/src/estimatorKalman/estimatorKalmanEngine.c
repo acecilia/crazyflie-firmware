@@ -81,6 +81,29 @@ static void matrixAssertNotNan(arm_matrix_instance_f32* matrix, char *file, int 
 #define DEBUG_KALMAN_MATRIX_ASSERT_NOT_NAN(storage) {}
 #endif
 
+#include "debug.h"
+
+static void printMatrix(arm_matrix_instance_f32* matrix) {
+  const char *rows[] = {"X","Y","Z","PX","PY","PZ","D0","D1","D2"};
+
+  DEBUG_PRINT(";X;Y;Z;PX;PY;PZ;D0;D1;D2\n");
+  if(matrix->numCols == 1) {
+    DEBUG_PRINT(";");
+    for (int i = 0; i < matrix->numRows; i++) {
+      DEBUG_PRINT("%f;", (double)matrix->pData[i]);
+    }
+  } else {
+    for (int i = 0; i < matrix->numRows; i++) {
+      DEBUG_PRINT("%s;", rows[i]);
+      for(int j = 0; j < matrix->numCols; j++) {
+        DEBUG_PRINT("%f;", (double)matrix->pData[i * matrix->numRows + j]);
+      }
+      DEBUG_PRINT("\n");
+    }
+  }
+  DEBUG_PRINT("\n");
+}
+
 /**
  * Constants
  */
@@ -290,11 +313,16 @@ static void ensureBoundedValuesForPositionAndVelocityStates(estimatorKalmanStora
 
 /**
  Attitude update: compute the attitude quaternion values in [w,x,y,z] order
+
+ @param storage the kalman storage to use
+ @param dtwx the increase of angular position in the x axis (rad)
+ @param dtwy the increase of angular position in the y axis (rad)
+ @param dtwz the increase of angular position in the z axis (rad)
  */
 static void updateAttitudeQuaternion(estimatorKalmanStorage_t* storage, const float dtwx, const float dtwy, const float dtwz) {
   DEBUG_KALMAN_ASSERT(dtwx != 0 || dtwy != 0 || dtwz != 0);
 
-  float angle = arm_sqrt(dtwx*dtwx + dtwy*dtwy + dtwz*dtwz);
+  float angle = arm_sqrt(dtwx*dtwx + dtwy*dtwy + dtwz*dtwz); // In rad
   float ca = arm_cos_f32(angle/2.0f);
   float sa = arm_sin_f32(angle/2.0f);
   float dq[4] = {ca, sa*dtwx/angle, sa*dtwy/angle, sa*dtwz/angle};
@@ -319,7 +347,7 @@ static void updateAttitudeQuaternion(estimatorKalmanStorage_t* storage, const fl
  * Main Kalman Filter functions
  */
 
-static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitude) {
+static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitudeError) {
   // Reset the queues
   if (!storage->isInit) {
     storage->accelerationDataQueue = xQueueCreate(ACCELERATION_QUEUE_LENGTH, sizeof(Axis3f));
@@ -341,9 +369,9 @@ static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* ini
   storage->S[STATE_PX] = initialVelocity->value.z;
   storage->S[STATE_PY] = initialVelocity->value.y;
   storage->S[STATE_PZ] = initialVelocity->value.z;
-  storage->S[STATE_D0] = initialAttitude->value.x;
-  storage->S[STATE_D1] = initialAttitude->value.y;
-  storage->S[STATE_D2] = initialAttitude->value.z;
+  storage->S[STATE_D0] = initialAttitudeError->value.x;
+  storage->S[STATE_D1] = initialAttitudeError->value.y;
+  storage->S[STATE_D2] = initialAttitudeError->value.z;
 
   // Initialize the attitude quaternion
   for(int i=0; i<3; i++) {
@@ -373,9 +401,9 @@ static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* ini
   storage->P[STATE_PY][STATE_PY] = powf(initialVelocity->stdDev.y, 2);
   storage->P[STATE_PZ][STATE_PZ] = powf(initialVelocity->stdDev.z, 2);
 
-  storage->P[STATE_D0][STATE_D0] = powf(initialAttitude->stdDev.x, 2);
-  storage->P[STATE_D1][STATE_D1] = powf(initialAttitude->stdDev.y, 2);
-  storage->P[STATE_D2][STATE_D2] = powf(initialAttitude->stdDev.z, 2);
+  storage->P[STATE_D0][STATE_D0] = powf(initialAttitudeError->stdDev.x, 2);
+  storage->P[STATE_D1][STATE_D1] = powf(initialAttitudeError->stdDev.y, 2);
+  storage->P[STATE_D2][STATE_D2] = powf(initialAttitudeError->stdDev.z, 2);
 
   // Initialize covariance matrix
   storage->Pm = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->P };
@@ -435,8 +463,6 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
 
   DEBUG_KALMAN_ASSERT(dt > 0);
 
-  float dt2 = dt*dt;
-
   // ====== DYNAMICS LINEARIZATION ======
   // Initialize as the identity
   A[STATE_X][STATE_X] = 1;
@@ -478,30 +504,31 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_Z][STATE_D2] = (storage->S[STATE_PX]*storage->R[2][1] - storage->S[STATE_PY]*storage->R[2][0])*dt;
 
   // Body-frame velocity from body-frame velocity
-  A[STATE_PX][STATE_PX] = 1; // Drag negligible
-  A[STATE_PY][STATE_PX] = gyro->z*dt * -1;
-  A[STATE_PZ][STATE_PX] = gyro->y*dt;
+  A[STATE_PX][STATE_PX] =  1; //drag negligible
+  A[STATE_PY][STATE_PX] = -gyro->z*dt;
+  A[STATE_PZ][STATE_PX] =  gyro->y*dt;
 
-  A[STATE_PX][STATE_PY] = gyro->z*dt;
-  A[STATE_PY][STATE_PY] = 1; // Drag negligible
-  A[STATE_PZ][STATE_PY] = gyro->x*dt * -1;
+  A[STATE_PX][STATE_PY] =  gyro->z*dt;
+  A[STATE_PY][STATE_PY] =  1; //drag negligible
+  A[STATE_PZ][STATE_PY] = -gyro->x*dt;
 
-  A[STATE_PX][STATE_PZ] = gyro->y*dt * -1;
-  A[STATE_PY][STATE_PZ] = gyro->x*dt;
-  A[STATE_PZ][STATE_PZ] = 1; // Drag negligible
+  A[STATE_PX][STATE_PZ] = -gyro->y*dt;
+  A[STATE_PY][STATE_PZ] =  gyro->x*dt;
+  A[STATE_PZ][STATE_PZ] =  1; //drag negligible
 
   // Body-frame velocity from attitude error
-  A[STATE_PX][STATE_D0] = 0;
-  A[STATE_PY][STATE_D0] = storage->R[2][2]*dt * G_TO_M_PER_S * -1;
-  A[STATE_PZ][STATE_D0] = storage->R[2][1]*dt * G_TO_M_PER_S;
+  // acecilia. Why the gravity is here?
+  A[STATE_PX][STATE_D0] =  0;
+  A[STATE_PY][STATE_D0] = -G_TO_M_PER_S*storage->R[2][2]*dt; // -gravityInBodyZ
+  A[STATE_PZ][STATE_D0] =  G_TO_M_PER_S*storage->R[2][1]*dt; //  gravityInBodyY
 
-  A[STATE_PX][STATE_D1] = storage->R[2][2]*dt * G_TO_M_PER_S;
-  A[STATE_PY][STATE_D1] = 0;
-  A[STATE_PZ][STATE_D1] = storage->R[2][0]*dt * G_TO_M_PER_S * -1;
+  A[STATE_PX][STATE_D1] =  G_TO_M_PER_S*storage->R[2][2]*dt; //  gravityInBodyZ
+  A[STATE_PY][STATE_D1] =  0;
+  A[STATE_PZ][STATE_D1] = -G_TO_M_PER_S*storage->R[2][0]*dt; // -gravityInBodyX
 
-  A[STATE_PX][STATE_D2] = storage->R[2][1]*dt * G_TO_M_PER_S * -1;
-  A[STATE_PY][STATE_D2] = storage->R[2][0]*dt * G_TO_M_PER_S;
-  A[STATE_PZ][STATE_D2] = 0;
+  A[STATE_PX][STATE_D2] = -G_TO_M_PER_S*storage->R[2][1]*dt; // -gravityInBodyY
+  A[STATE_PY][STATE_D2] =  G_TO_M_PER_S*storage->R[2][0]*dt; //  gravityInBodyX
+  A[STATE_PZ][STATE_D2] =  0;
 
   // Attitude error from attitude error
   /**
@@ -535,6 +562,8 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_D2][STATE_D1] = -d0 + d1*d2/2;
   A[STATE_D2][STATE_D2] = 1 - d0*d0/2 - d1*d1/2;
 
+  // DEBUG_PRINT("A\n"); printMatrix(&Am);
+  // DEBUG_PRINT("P\n"); printMatrix(&storage->Pm);
 
   // ====== COVARIANCE UPDATE ======
   mat_mult(&Am, &storage->Pm, &tmpNN1m); // A P
@@ -542,26 +571,24 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   mat_mult(&tmpNN1m, &tmpNN2m, &storage->Pm); // A P A'
   // Process noise is added after the return from the prediction step
 
+  // DEBUG_PRINT("P\n"); printMatrix(&storage->Pm);
+
   // ====== PREDICTION STEP ======
   // Position updates in the body frame (will be rotated to inertial frame)
-  float dx = storage->S[STATE_PX] * dt + acc->x * dt2 / 2.0f;
-  float dy = storage->S[STATE_PY] * dt + acc->y * dt2 / 2.0f;
-  float dz = storage->S[STATE_PZ] * dt + acc->z * dt2 / 2.0f;
+  float dx = storage->S[STATE_PX] * dt + acc->x * dt * dt / 2.0f;
+  float dy = storage->S[STATE_PY] * dt + acc->y * dt * dt / 2.0f;
+  float dz = storage->S[STATE_PZ] * dt + acc->z * dt * dt / 2.0f;
 
   // Position update
   storage->S[STATE_X] += storage->R[0][0] * dx + storage->R[0][1] * dy + storage->R[0][2] * dz;
   storage->S[STATE_Y] += storage->R[1][0] * dx + storage->R[1][1] * dy + storage->R[1][2] * dz;
-  storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz; //  - GRAVITY_MAGNITUDE * dt2 / 2.0f; -- WHY??!!
-
-  // Keep previous time step's state for the update
-  float tmpSPX = storage->S[STATE_PX];
-  float tmpSPY = storage->S[STATE_PY];
-  float tmpSPZ = storage->S[STATE_PZ];
+  storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz - G_TO_M_PER_S * dt * dt / 2.0f; // -- acecilia. WHY??!!
 
   // Body-velocity update: accelerometers - gyros cross velocity - gravity in body frame
-  storage->S[STATE_PX] += dt * (acc->x + gyro->z * tmpSPY - gyro->y * tmpSPZ - storage->R[2][0]*G_TO_M_PER_S);
-  storage->S[STATE_PY] += dt * (acc->y - gyro->z * tmpSPX + gyro->x * tmpSPZ - storage->R[2][1]*G_TO_M_PER_S);
-  storage->S[STATE_PZ] += dt * (acc->z + gyro->y * tmpSPX - gyro->x * tmpSPY - storage->R[2][2]*G_TO_M_PER_S);
+  // acecilia. Why having the gravity into account here? When having acc = 0 and gyro = 0, doing that (because in R we have the identity) makes storage->S[STATE_PZ] grow until reaching the limit (-10). For now, remove gravity from the equation
+   storage->S[STATE_PX] += dt * (acc->x + gyro->z * storage->S[STATE_PY] - gyro->y * storage->S[STATE_PZ] - storage->R[2][0]*G_TO_M_PER_S);
+   storage->S[STATE_PY] += dt * (acc->y - gyro->z * storage->S[STATE_PX] + gyro->x * storage->S[STATE_PZ] - storage->R[2][1]*G_TO_M_PER_S);
+   storage->S[STATE_PZ] += dt * (acc->z + gyro->y * storage->S[STATE_PX] - gyro->x * storage->S[STATE_PY] - storage->R[2][2]*G_TO_M_PER_S);
 
   // acecilia. This check looks reasonable when we are sure that the frame is set in a way that S[STATE_Z] can not be less than zero, but: what if the (0, 0, 0) position of the frame is 1m over the floor? In that case, S[STATE_Z] CAN be less than zero. Thus, comment this for now
   /*
@@ -589,6 +616,8 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
   DEBUG_KALMAN_ASSERT(Hm->numRows == 1);
   DEBUG_KALMAN_ASSERT(Hm->numCols == STATE_DIM);
   DEBUG_KALMAN_MATRIX_ASSERT_NOT_NAN(&Htm);
+
+  DEBUG_PRINT("P\n"); printMatrix(&storage->Pm);
 
   // ====== INNOVATION COVARIANCE ======
 
@@ -768,7 +797,7 @@ static void update(estimatorKalmanStorage_t* storage) {
    * Prediction step + noise addition
    */
 
-  Axis3f acceleration = {.x = 0, .y = 0, .z = 0 };
+  Axis3f acceleration = {.x = 0, .y = 0, .z = -G_TO_M_PER_S };
   bool accelerationDataReceived = false;
   while (hasAccelerationData(storage, &acceleration)) {
     accelerationDataReceived = true;
@@ -784,7 +813,17 @@ static void update(estimatorKalmanStorage_t* storage) {
     DEBUG_KALMAN_ASSERT(false);
   }
 
+
+  // DEBUG_PRINT("PB\n"); printMatrix(&storage->Pm);
+  // { DEBUG_PRINT("SB\n"); arm_matrix_instance_f32 Sm = { STATE_DIM, 1, (float *)storage->S }; printMatrix(&Sm); }
+
   predict(storage, &acceleration, &angularVelocity, dt);
+
+  // DEBUG_PRINT("PA\n"); printMatrix(&storage->Pm);
+  // { DEBUG_PRINT("SA\n"); arm_matrix_instance_f32 Sm = { STATE_DIM, 1, (float *)storage->S }; printMatrix(&Sm); }
+
+  // DEBUG_PRINT("R\n"); arm_matrix_instance_f32 Rm = { 3, 3, (float *)storage->R }; printMatrix(&Rm);
+  // DEBUG_PRINT("q\n"); arm_matrix_instance_f32 qm = { 4, 1, (float *)storage->q }; printMatrix(&qm);
 
   // Add process noise every loop, rather than every prediction
   Axis3f accStdDev = accelerationDataReceived ? (Axis3f){.x = procNoiseAcc_xy, .y = procNoiseAcc_xy, .z = procNoiseAcc_z } : (Axis3f){.x = 0, .y = 0, .z = 0 };
