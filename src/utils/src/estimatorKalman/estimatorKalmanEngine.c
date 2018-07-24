@@ -81,6 +81,8 @@ static void matrixAssertNotNan(arm_matrix_instance_f32* matrix, char *file, int 
 #define DEBUG_KALMAN_MATRIX_ASSERT_NOT_NAN(storage) {}
 #endif
 
+// Function to print the content of a matrix. Kept here in case it is needed during development
+
 #include "debug.h"
 
 static void printMatrix(arm_matrix_instance_f32* matrix) {
@@ -130,7 +132,7 @@ static float measNoiseGyro_yaw = 0.1f; // radians per second
  */
 
 #define RAD_TO_DEG (180.0f/PI)
-#define G_TO_M_PER_S (9.81f)
+#define GRAVITY (9.81f) // Absolut value. The sign is introduced when using it
 
 static inline void mat_trans(const arm_matrix_instance_f32 * pSrc, arm_matrix_instance_f32 * pDst) {
   DEBUG_KALMAN_ASSERT(ARM_MATH_SUCCESS == arm_mat_trans_f32(pSrc, pDst));
@@ -517,17 +519,16 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_PZ][STATE_PZ] =  1; //drag negligible
 
   // Body-frame velocity from attitude error
-  // acecilia. Why the gravity is here?
   A[STATE_PX][STATE_D0] =  0;
-  A[STATE_PY][STATE_D0] = -G_TO_M_PER_S*storage->R[2][2]*dt; // -gravityInBodyZ
-  A[STATE_PZ][STATE_D0] =  G_TO_M_PER_S*storage->R[2][1]*dt; //  gravityInBodyY
+  A[STATE_PY][STATE_D0] = -GRAVITY*storage->R[2][2]*dt;
+  A[STATE_PZ][STATE_D0] =  GRAVITY*storage->R[2][1]*dt;
 
-  A[STATE_PX][STATE_D1] =  G_TO_M_PER_S*storage->R[2][2]*dt; //  gravityInBodyZ
+  A[STATE_PX][STATE_D1] =  GRAVITY*storage->R[2][2]*dt;
   A[STATE_PY][STATE_D1] =  0;
-  A[STATE_PZ][STATE_D1] = -G_TO_M_PER_S*storage->R[2][0]*dt; // -gravityInBodyX
+  A[STATE_PZ][STATE_D1] = -GRAVITY*storage->R[2][0]*dt;
 
-  A[STATE_PX][STATE_D2] = -G_TO_M_PER_S*storage->R[2][1]*dt; // -gravityInBodyY
-  A[STATE_PY][STATE_D2] =  G_TO_M_PER_S*storage->R[2][0]*dt; //  gravityInBodyX
+  A[STATE_PX][STATE_D2] = -GRAVITY*storage->R[2][1]*dt;
+  A[STATE_PY][STATE_D2] =  GRAVITY*storage->R[2][0]*dt;
   A[STATE_PZ][STATE_D2] =  0;
 
   // Attitude error from attitude error
@@ -562,16 +563,11 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   A[STATE_D2][STATE_D1] = -d0 + d1*d2/2;
   A[STATE_D2][STATE_D2] = 1 - d0*d0/2 - d1*d1/2;
 
-  // DEBUG_PRINT("A\n"); printMatrix(&Am);
-  // DEBUG_PRINT("P\n"); printMatrix(&storage->Pm);
-
   // ====== COVARIANCE UPDATE ======
   mat_mult(&Am, &storage->Pm, &tmpNN1m); // A P
   mat_trans(&Am, &tmpNN2m); // A'
   mat_mult(&tmpNN1m, &tmpNN2m, &storage->Pm); // A P A'
   // Process noise is added after the return from the prediction step
-
-  // DEBUG_PRINT("P\n"); printMatrix(&storage->Pm);
 
   // ====== PREDICTION STEP ======
   // Position updates in the body frame (will be rotated to inertial frame)
@@ -582,13 +578,12 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   // Position update
   storage->S[STATE_X] += storage->R[0][0] * dx + storage->R[0][1] * dy + storage->R[0][2] * dz;
   storage->S[STATE_Y] += storage->R[1][0] * dx + storage->R[1][1] * dy + storage->R[1][2] * dz;
-  storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz - G_TO_M_PER_S * dt * dt / 2.0f; // -- acecilia. WHY??!!
+  storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz - GRAVITY * dt * dt / 2.0f;
 
   // Body-velocity update: accelerometers - gyros cross velocity - gravity in body frame
-  // acecilia. Why having the gravity into account here? When having acc = 0 and gyro = 0, doing that (because in R we have the identity) makes storage->S[STATE_PZ] grow until reaching the limit (-10). For now, remove gravity from the equation
-   storage->S[STATE_PX] += dt * (acc->x + gyro->z * storage->S[STATE_PY] - gyro->y * storage->S[STATE_PZ] - storage->R[2][0]*G_TO_M_PER_S);
-   storage->S[STATE_PY] += dt * (acc->y - gyro->z * storage->S[STATE_PX] + gyro->x * storage->S[STATE_PZ] - storage->R[2][1]*G_TO_M_PER_S);
-   storage->S[STATE_PZ] += dt * (acc->z + gyro->y * storage->S[STATE_PX] - gyro->x * storage->S[STATE_PY] - storage->R[2][2]*G_TO_M_PER_S);
+   storage->S[STATE_PX] += dt * (acc->x + gyro->z * storage->S[STATE_PY] - gyro->y * storage->S[STATE_PZ] - storage->R[2][0]*GRAVITY);
+   storage->S[STATE_PY] += dt * (acc->y - gyro->z * storage->S[STATE_PX] + gyro->x * storage->S[STATE_PZ] - storage->R[2][1]*GRAVITY);
+   storage->S[STATE_PZ] += dt * (acc->z + gyro->y * storage->S[STATE_PX] - gyro->x * storage->S[STATE_PY] - storage->R[2][2]*GRAVITY);
 
   // acecilia. This check looks reasonable when we are sure that the frame is set in a way that S[STATE_Z] can not be less than zero, but: what if the (0, 0, 0) position of the frame is 1m over the floor? In that case, S[STATE_Z] CAN be less than zero. Thus, comment this for now
   /*
@@ -797,33 +792,27 @@ static void update(estimatorKalmanStorage_t* storage) {
    * Prediction step + noise addition
    */
 
-  Axis3f acceleration = {.x = 0, .y = 0, .z = -G_TO_M_PER_S };
+  Axis3f acceleration = {.x = 0, .y = 0, .z = 0 };
   bool accelerationDataReceived = false;
   while (hasAccelerationData(storage, &acceleration)) {
     accelerationDataReceived = true;
-    // Accumulate acceleration. Not done because was not needed yet
+    // Accumulate acceleration. Not done because was not needed yet. Remove the assertion below when implemented
     DEBUG_KALMAN_ASSERT(false);
+  }
+  // If there is no acceleration data received, set it as the drone is not accelerating. The kalman estimator uses a linearize approximation of the dynamics of the quadrocopter to push the covariance forward (during prediction). This approximation considers the gravity inside the acceleration data passed to it, and that is the reason why we need to add it here
+  if(!accelerationDataReceived) {
+    acceleration.z += -GRAVITY;
   }
 
   Axis3f angularVelocity = {.x = 0, .y = 0, .z = 0 };
   bool angularVelocityDataReceived = false;
   while (hasAngularVelocityData(storage, &angularVelocity)) {
     angularVelocityDataReceived = true;
-    // Accumulate angular velocity. Not done because was not needed yet
+    // Accumulate angular velocity. Not done because was not needed yet. Remove the assertion below when implemented
     DEBUG_KALMAN_ASSERT(false);
   }
 
-
-  // DEBUG_PRINT("PB\n"); printMatrix(&storage->Pm);
-  // { DEBUG_PRINT("SB\n"); arm_matrix_instance_f32 Sm = { STATE_DIM, 1, (float *)storage->S }; printMatrix(&Sm); }
-
   predict(storage, &acceleration, &angularVelocity, dt);
-
-  // DEBUG_PRINT("PA\n"); printMatrix(&storage->Pm);
-  // { DEBUG_PRINT("SA\n"); arm_matrix_instance_f32 Sm = { STATE_DIM, 1, (float *)storage->S }; printMatrix(&Sm); }
-
-  // DEBUG_PRINT("R\n"); arm_matrix_instance_f32 Rm = { 3, 3, (float *)storage->R }; printMatrix(&Rm);
-  // DEBUG_PRINT("q\n"); arm_matrix_instance_f32 qm = { 4, 1, (float *)storage->q }; printMatrix(&qm);
 
   // Add process noise every loop, rather than every prediction
   Axis3f accStdDev = accelerationDataReceived ? (Axis3f){.x = procNoiseAcc_xy, .y = procNoiseAcc_xy, .z = procNoiseAcc_z } : (Axis3f){.x = 0, .y = 0, .z = 0 };
