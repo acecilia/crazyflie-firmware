@@ -15,6 +15,22 @@ typedef struct {
 } vec3Measurement_t;
 
 /**
+ A x,y,z vector with one associated standard deviation for the three axis
+ TODO: acecilia. This may be moved into "stabilizer_types.h"
+ */
+typedef struct {
+  union {
+    struct {
+      float x;
+      float y;
+      float z;
+    };
+    float axis[3];
+  };
+  float stdDev;
+} measurement_t;
+
+/**
  NOTE: This values should not be used inside the implementation of the kalman estimator as static variables, but they should be passed as arguments, when calling its functions
  */
 typedef struct {
@@ -47,6 +63,7 @@ typedef struct {
   bool (*enqueueAngularVelocity)(const estimatorKalmanStorage_t* storage, const Axis3f* angularVelocity);
   bool (*enqueuePosition)(const estimatorKalmanStorage_t* storage, const positionMeasurement_t* position);
   bool (*enqueueDistance)(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance);
+  bool (*enqueueVelocity)(const estimatorKalmanStorage_t* storage, const measurement_t* velocity);
 
   bool (*isPositionStable)(const estimatorKalmanStorage_t* storage, const float maxStdDev);
   bool (*isVelocityStable)(const estimatorKalmanStorage_t* storage, const float maxStdDev);

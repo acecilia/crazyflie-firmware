@@ -33,6 +33,7 @@ typedef struct {
   xQueueHandle angularVelocityDataQueue;
   xQueueHandle positionDataQueue;
   xQueueHandle distanceDataQueue;
+  xQueueHandle velocityDataQueue;
 
   // The quad's attitude as a quaternion (w,x,y,z)
   // We store as a quaternion to allow easy normalization (in comparison to a rotation matrix),

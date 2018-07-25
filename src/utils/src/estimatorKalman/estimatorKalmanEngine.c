@@ -217,6 +217,7 @@ static arm_matrix_instance_f32 tmpNN3m = {STATE_DIM, STATE_DIM, tmpNN3d};
 #define ANGULAR_VELOCITY_QUEUE_LENGTH (10)
 #define POSITION_QUEUE_LENGTH (10)
 #define DISTANCE_QUEUE_LENGTH (10)
+#define VELOCITY_QUEUE_LENGTH (10)
 
 static bool enqueueData(xQueueHandle queue, const void* data) {
   portBASE_TYPE result;
@@ -254,6 +255,11 @@ static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const dista
   return enqueueData(storage->distanceDataQueue, (void*)distance);
 }
 
+static bool enqueueVelocity(const estimatorKalmanStorage_t* storage, const measurement_t* velocity) {
+  DEBUG_KALMAN_ASSERT(storage->isInit);
+  return enqueueData(storage->velocityDataQueue, (void*)velocity);
+}
+
 static inline bool hasAccelerationData(estimatorKalmanStorage_t* storage, Axis3f* acceleration) {
   return (pdTRUE == xQueueReceive(storage->accelerationDataQueue, acceleration, 0));
 }
@@ -262,12 +268,16 @@ static inline bool hasAngularVelocityData(estimatorKalmanStorage_t* storage, Axi
   return (pdTRUE == xQueueReceive(storage->angularVelocityDataQueue, angularVelocity, 0));
 }
 
+static inline bool hasPositionData(estimatorKalmanStorage_t* storage, positionMeasurement_t* position) {
+  return (pdTRUE == xQueueReceive(storage->positionDataQueue, position, 0));
+}
+
 static inline bool hasDistanceData(estimatorKalmanStorage_t* storage, distanceMeasurement_t* distance) {
   return (pdTRUE == xQueueReceive(storage->distanceDataQueue, distance, 0));
 }
 
-static inline bool hasPositionData(estimatorKalmanStorage_t* storage, positionMeasurement_t* position) {
-  return (pdTRUE == xQueueReceive(storage->positionDataQueue, position, 0));
+static inline bool hasVelocityData(estimatorKalmanStorage_t* storage, measurement_t* velocity) {
+  return (pdTRUE == xQueueReceive(storage->velocityDataQueue, velocity, 0));
 }
 
 /**
@@ -355,11 +365,13 @@ static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* ini
     storage->angularVelocityDataQueue = xQueueCreate(ANGULAR_VELOCITY_QUEUE_LENGTH, sizeof(Axis3f));
     storage->positionDataQueue = xQueueCreate(POSITION_QUEUE_LENGTH, sizeof(positionMeasurement_t));
     storage->distanceDataQueue = xQueueCreate(DISTANCE_QUEUE_LENGTH, sizeof(distanceMeasurement_t));
+    storage->velocityDataQueue = xQueueCreate(VELOCITY_QUEUE_LENGTH, sizeof(measurement_t));
   } else {
     xQueueReset(storage->accelerationDataQueue);
     xQueueReset(storage->angularVelocityDataQueue);
     xQueueReset(storage->positionDataQueue);
     xQueueReset(storage->distanceDataQueue);
+    xQueueReset(storage->velocityDataQueue);
   }
 
   // Initialize the state
@@ -671,8 +683,12 @@ static void updateWithPosition(estimatorKalmanStorage_t* storage, positionMeasur
   }
 }
 
+/**
+ Update the filter with a distance measurement
+
+ @param d A measurement of distance to a point (x, y, z)
+ */
 static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasurement_t* d) {
-  // a measurement of distance to point (x, y, z)
   float h[STATE_DIM] = {0};
   arm_matrix_instance_f32 H = {1, STATE_DIM, h};
 
@@ -700,6 +716,24 @@ static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasur
   float measuredDistance = d->distance;
   scalarUpdate(storage, &H, measuredDistance-predictedDistance, d->stdDev);
 }
+
+/**
+ Update the filter with a velocity measurement
+
+ @param vel A direct measurement of the velocity vector
+ */
+static void updateWithVelocity(estimatorKalmanStorage_t* storage, measurement_t* vel) {
+  // Do a scalar update for each state, since this should be faster than updating all together
+  for (int i=0; i<3; i++) {
+    if (!isnan(vel->axis[i])) { // Only update positions that are valid: allows to update position components individually
+      float h[STATE_DIM] = {0};
+      arm_matrix_instance_f32 H = {1, STATE_DIM, h};
+      h[STATE_PX+i] = 1;
+      scalarUpdate(storage, &H, vel->axis[i] - storage->S[STATE_PX+i], vel->stdDev);
+    }
+  }
+}
+
 
 static void finalize(estimatorKalmanStorage_t* storage) {
   // Incorporate the attitude error (Kalman filter state) with the attitude
@@ -788,7 +822,7 @@ static void update(estimatorKalmanStorage_t* storage) {
 #endif
 
   uint32_t tick = xTaskGetTickCount(); // would be nice if this had a precision higher than 1ms...
-  float dt = (float)(tick - storage->lastUpdate)/configTICK_RATE_HZ;
+  float dt = (float)(tick - storage->lastUpdate) / configTICK_RATE_HZ;
 
   // if dt == 0 means that the update function was called multiple times in the same ms: we do not have enough resolution on the clock to perform the prediction
   if(dt == 0) {
@@ -835,9 +869,14 @@ static void update(estimatorKalmanStorage_t* storage) {
     updateWithPosition(storage, &position);
   }
 
-  distanceMeasurement_t dist;
-  while (hasDistanceData(storage, &dist)) {
-    updateWithDistance(storage, &dist);
+  distanceMeasurement_t distance;
+  while (hasDistanceData(storage, &distance)) {
+    updateWithDistance(storage, &distance);
+  }
+
+  measurement_t velocity;
+  while (hasVelocityData(storage, &velocity)) {
+    updateWithVelocity(storage, &velocity);
   }
 
   /**
@@ -948,6 +987,7 @@ const estimatorKalmanEngine_t estimatorKalmanEngine = {
   .enqueueAngularVelocity = enqueueAngularVelocity,
   .enqueuePosition = enqueuePosition,
   .enqueueDistance = enqueueDistance,
+  .enqueueVelocity = enqueueVelocity,
 
   .isPositionStable = isPositionStable,
   .isVelocityStable = isVelocityStable,
