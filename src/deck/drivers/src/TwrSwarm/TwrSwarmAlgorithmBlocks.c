@@ -438,46 +438,12 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   }
   estimatorKalmanGetEstimatedPos(&debug.position);
 #endif
-
 }
 
 #define DISTANCE_STD_DEV (float) 0.25
 
 void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
-  distanceMeasurement_t distances[NEIGHBOUR_STORAGE_CAPACITY];
-  uint8_t distancesIndex = 0;
-
-  // Get all the positions and distances from the drone we want to update position, to the rest of them
-  for (unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
-    if (neighboursStorage[i].isInitialized) {
-      if(neighbourData->id != neighboursStorage[i].id) {
-        tofData_t* tofData = findTofData(tofStorage, neighbourData->id, neighboursStorage[i].id, false);
-
-        if (tofData != NULL) {
-          estimatorKalmanStorage_t* estimator = &neighboursStorage[i].estimator;
-          bool filterIsInit = estimator->isInit;
-          bool positionIsStable = estimatorKalmanEngine.isPositionStable(estimator, 0.01);
-          bool velocityIsStable = estimatorKalmanEngine.isVelocityStable(estimator, 0.01);
-
-          if(filterIsInit && positionIsStable && velocityIsStable) {
-            point_t positionData;
-            estimatorKalmanEngine.getPosition(estimator, &positionData);
-
-            distances[distancesIndex].x = positionData.x;
-            distances[distancesIndex].y = positionData.y;
-            distances[distancesIndex].z = positionData.z;
-            distances[distancesIndex].distance = calculateDistance(tofData->tof);
-            distances[distancesIndex].stdDev = DISTANCE_STD_DEV;
-            distancesIndex++;
-          }
-        }
-      }
-    }
-  }
-
-  unsigned int neighbours = countNeighbours(neighboursStorage);
-
-  // Give the initial state of the drone
+  // Give the initial state of the drone if needed
   if(!neighbourData->estimator.isInit) {
     /*
      * In order to avoid trilaterating an initial position, we better pass a "fake" value with very high standard deviation and wait until further meassurements stabilize the position estimation
@@ -504,6 +470,8 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
     estimatorKalmanEngine.init(&neighbourData->estimator, &initialPosition, &initialVelocity, &initialAttitudeError);
   }
 
+  unsigned int neighbours = countNeighbours(neighboursStorage);
+
   // Assume some position values while building the coordinate system
   if(true /* is building the coordinate system*/) {
     if(neighbours == 1) {
@@ -518,6 +486,40 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
       // Simulate 2D
       positionMeasurement_t position = { .x = NAN, .y = NAN, .z = 0, .stdDev = 0 };
       estimatorKalmanEngine.enqueuePosition(&neighbourData->estimator, &position);
+    }
+  }
+
+  distanceMeasurement_t distances[NEIGHBOUR_STORAGE_CAPACITY];
+  uint8_t distancesIndex = 0;
+
+  // Get all the positions and distances from the drone we want to update position, to the rest of them
+  for (unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
+    if (neighboursStorage[i].isInitialized) {
+      if(neighbourData->id != neighboursStorage[i].id) {
+        tofData_t* tofData = findTofData(tofStorage, neighbourData->id, neighboursStorage[i].id, false);
+
+        if (tofData != NULL) {
+          estimatorKalmanStorage_t* estimator = &neighboursStorage[i].estimator;
+          bool isInit = estimator->isInit;
+          bool positionIsStable = estimatorKalmanEngine.isPositionStable(estimator, 0.01);
+          bool velocityIsStable = estimatorKalmanEngine.isVelocityStable(estimator, 0.01);
+
+          if(isInit && positionIsStable && velocityIsStable) {
+            // Run update without new data, to get the most updated position (basically just run the prediction)
+            // estimatorKalmanEngine.update(estimator);
+
+            point_t positionData;
+            estimatorKalmanEngine.getPosition(estimator, &positionData);
+
+            distances[distancesIndex].x = positionData.x;
+            distances[distancesIndex].y = positionData.y;
+            distances[distancesIndex].z = positionData.z;
+            distances[distancesIndex].distance = calculateDistance(tofData->tof);
+            distances[distancesIndex].stdDev = DISTANCE_STD_DEV;
+            distancesIndex++;
+          }
+        }
+      }
     }
   }
 
