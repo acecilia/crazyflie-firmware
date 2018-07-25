@@ -37,7 +37,6 @@ typedef struct {
   struct {
     float maximumAbsolutePosition;        // In meters
     float maximumAbsoluteVelocity;        // In m/s
-    float maximumAbsoluteAngularVelocity; // In rad/s
   } constants;
 
   void (*init)(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitudeError);
@@ -50,6 +49,7 @@ typedef struct {
   bool (*enqueueDistance)(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance);
 
   bool (*isPositionStable)(const estimatorKalmanStorage_t* storage, const float maxStdDev);
+  bool (*isVelocityStable)(const estimatorKalmanStorage_t* storage, const float maxStdDev);
 
   void (*getPosition)(const estimatorKalmanStorage_t* storage, point_t* position);
   void (*getState)(const estimatorKalmanStorage_t* storage, state_t* state);

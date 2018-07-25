@@ -9,6 +9,7 @@
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
+#include "debug.h"
 #endif
 
 // #pragma GCC diagnostic warning "-Wconversion"
@@ -437,9 +438,10 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   }
   estimatorKalmanGetEstimatedPos(&debug.position);
 #endif
+
 }
 
-#define DISTANCE_STD_DEV (float) 0.01
+#define DISTANCE_STD_DEV (float) 0.25
 
 void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
   distanceMeasurement_t distances[NEIGHBOUR_STORAGE_CAPACITY];
@@ -454,8 +456,10 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
         if (tofData != NULL) {
           estimatorKalmanStorage_t* estimator = &neighboursStorage[i].estimator;
           bool filterIsInit = estimator->isInit;
-          bool positionIsStable = estimatorKalmanEngine.isPositionStable(estimator, DISTANCE_STD_DEV);
-          if(filterIsInit && positionIsStable) {
+          bool positionIsStable = estimatorKalmanEngine.isPositionStable(estimator, 0.01);
+          bool velocityIsStable = estimatorKalmanEngine.isVelocityStable(estimator, 0.01);
+
+          if(filterIsInit && positionIsStable && velocityIsStable) {
             point_t positionData;
             estimatorKalmanEngine.getPosition(estimator, &positionData);
 
@@ -473,7 +477,7 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
 
   unsigned int neighbours = countNeighbours(neighboursStorage);
 
-  // Give the initial position of the drone
+  // Give the initial state of the drone
   if(!neighbourData->estimator.isInit) {
     /*
      * In order to avoid trilaterating an initial position, we better pass a "fake" value with very high standard deviation and wait until further meassurements stabilize the position estimation
@@ -491,14 +495,13 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
       .value = { .x = 0, .y = 0, .z = 0 },
       .stdDev = { .x = velocityStdDev, .y = velocityStdDev, .z = velocityStdDev }
     };
-    // In rad/s
-    float angularVelocityStdDev = estimatorKalmanEngine.constants.maximumAbsoluteAngularVelocity;
-    const vec3Measurement_t initialAttitude = {
+    // In rad/s. We will not be using any attitude information, so set it as flat with minimum stdDev
+    const vec3Measurement_t initialAttitudeError = {
       .value = { .x = 0, .y = 0, .z = 0 },
-      .stdDev = { .x = angularVelocityStdDev, .y = angularVelocityStdDev, .z = angularVelocityStdDev }
+      .stdDev = { .x = 0, .y = 0, .z = 0 }
     };
 
-    estimatorKalmanEngine.init(&neighbourData->estimator, &initialPosition, &initialVelocity, &initialAttitude);
+    estimatorKalmanEngine.init(&neighbourData->estimator, &initialPosition, &initialVelocity, &initialAttitudeError);
   }
 
   // Assume some position values while building the coordinate system

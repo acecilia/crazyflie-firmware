@@ -117,7 +117,6 @@ static void printMatrix(const arm_matrix_instance_f32* matrix) {
 // The bounds on states, these shouldn't be hit...
 #define MAX_POSITION (100)        // In meters
 #define MAX_VELOCITY (10)         // In m/s
-#define MAX_ANGULAR_VELOCITY (30) // In rad/s
 
 static float procNoiseAcc_xy = 0.5f;
 static float procNoiseAcc_z = 1.0f;
@@ -380,7 +379,7 @@ static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* ini
     storage->q[i] = i == 0 ? 1 : 0;
   }
 
-  // Set the initial rotation matrix to the identity. This only affects the first prediction step, since in the finalization, after shifting attitude errors into the attitude state, the rotation matrix is updated.
+  // Set the initial rotation matrix to the identity. This only affects the first prediction step, since in the finalization, after shifting attitude errors into the attitude state, the rotation matrix is updated
   for(int i = 0; i < 3; i++) {
     for(int j = 0; j < 3; j++) {
       storage->R[i][j] = i==j ? 1 : 0;
@@ -410,6 +409,7 @@ static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* ini
   // Initialize covariance matrix
   storage->Pm = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->P };
 
+  // Initialize other variables of the storage
   storage->lastUpdate = xTaskGetTickCount();
   storage->isInit = true;
 
@@ -578,7 +578,7 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   // Position update
   storage->S[STATE_X] += storage->R[0][0] * dx + storage->R[0][1] * dy + storage->R[0][2] * dz;
   storage->S[STATE_Y] += storage->R[1][0] * dx + storage->R[1][1] * dy + storage->R[1][2] * dz;
-  storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz - GRAVITY * dt * dt / 2.0f;
+  storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz; // - GRAVITY * dt * dt / 2.0f; // acecilia. -- WHY?!
 
   // Keep previous time step's state for the update
   float tmpSPX = storage->S[STATE_PX];
@@ -586,9 +586,10 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   float tmpSPZ = storage->S[STATE_PZ];
 
   // body-velocity update: accelerometers - gyros cross velocity - gravity in body frame
-  storage->S[STATE_PX] += dt * (acc->x + gyro->z * tmpSPY - gyro->y * tmpSPZ - GRAVITY * storage->R[2][0]);
-  storage->S[STATE_PY] += dt * (acc->y - gyro->z * tmpSPX + gyro->x * tmpSPZ - GRAVITY * storage->R[2][1]);
-  storage->S[STATE_PZ] += dt * (acc->z + gyro->y * tmpSPX - gyro->x * tmpSPY - GRAVITY * storage->R[2][2]);
+  // NOTE: acecilia. Not sure what is the gravity doing here. Remove it for now
+  storage->S[STATE_PX] += dt * (acc->x + gyro->z * tmpSPY - gyro->y * tmpSPZ /*- GRAVITY * storage->R[2][0]*/);
+  storage->S[STATE_PY] += dt * (acc->y - gyro->z * tmpSPX + gyro->x * tmpSPZ /*- GRAVITY * storage->R[2][1]*/);
+  storage->S[STATE_PZ] += dt * (acc->z + gyro->y * tmpSPX - gyro->x * tmpSPY /*- GRAVITY * storage->R[2][2]*/);
 
   // acecilia. This check looks reasonable when we are sure that the frame is set in a way that S[STATE_Z] can not be less than zero, but: what if the (0, 0, 0) position of the frame is 1m over the floor? In that case, S[STATE_Z] CAN be less than zero. Thus, comment this for now
   /*
@@ -638,8 +639,8 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
   }
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 
-  if(true) { DEBUG_PRINT("P\n"); printMatrix(&storage->Pm); }
-  if(true) { DEBUG_PRINT("S\n"); arm_matrix_instance_f32 Sm = { STATE_DIM, 1, (float *)storage->S }; printMatrix(&Sm); }
+  if(false) { DEBUG_PRINT("P\n"); printMatrix(&storage->Pm); }
+  if(false) { DEBUG_PRINT("S\n"); arm_matrix_instance_f32 Sm = { STATE_DIM, 1, (float *)storage->S }; printMatrix(&Sm); }
 
   // ====== COVARIANCE UPDATE ======
   mat_mult(&Km, Hm, &tmpNN1m); // KH
@@ -805,10 +806,6 @@ static void update(estimatorKalmanStorage_t* storage) {
     // Accumulate acceleration. Not done because was not needed yet. Remove the assertion below when implemented
     DEBUG_KALMAN_ASSERT(false);
   }
-  // If there is no acceleration data received, set it as the drone is not accelerating. The kalman estimator uses a linearize approximation of the dynamics of the quadrocopter to push the covariance forward (during prediction). This approximation considers the gravity inside the acceleration data passed to it, and that is the reason why we need to add it here
-  if(!accelerationDataReceived) {
-    acceleration.z += -GRAVITY;
-  }
 
   Axis3f angularVelocity = {.x = 0, .y = 0, .z = 0 };
   bool angularVelocityDataReceived = false;
@@ -863,11 +860,15 @@ static void update(estimatorKalmanStorage_t* storage) {
  */
 
 static bool isPositionStable(const estimatorKalmanStorage_t* storage, const float maxStdDev) {
-  if(false) { DEBUG_PRINT("%f, %f, %f\n", (double)storage->P[STATE_X][STATE_X], (double)storage->P[STATE_Y][STATE_Y], (double)storage->P[STATE_Z][STATE_Z]); }
-
   return storage->P[STATE_X][STATE_X] < maxStdDev
       && storage->P[STATE_Y][STATE_Y] < maxStdDev
       && storage->P[STATE_Z][STATE_Z] < maxStdDev;
+}
+
+static bool isVelocityStable(const estimatorKalmanStorage_t* storage, const float maxStdDev) {
+  return storage->P[STATE_PX][STATE_PX] < maxStdDev
+  && storage->P[STATE_PY][STATE_PY] < maxStdDev
+  && storage->P[STATE_PZ][STATE_PZ] < maxStdDev;
 }
 
 /*
@@ -939,15 +940,18 @@ const estimatorKalmanEngine_t estimatorKalmanEngine = {
   .constants = {
     .maximumAbsolutePosition = MAX_POSITION,
     .maximumAbsoluteVelocity = MAX_VELOCITY,
-    .maximumAbsoluteAngularVelocity = MAX_ANGULAR_VELOCITY
   },
   .init = init,
   .update = update,
+
   .enqueueAcceleration = enqueueAcceleration,
   .enqueueAngularVelocity = enqueueAngularVelocity,
   .enqueuePosition = enqueuePosition,
   .enqueueDistance = enqueueDistance,
+
   .isPositionStable = isPositionStable,
+  .isVelocityStable = isVelocityStable,
+
   .getPosition = getPosition,
   .getState = getState
 };
