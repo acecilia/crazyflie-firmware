@@ -40,7 +40,7 @@ typedef struct {
     float maximumAbsoluteAngularVelocity; // In rad/s
   } constants;
 
-  void (*init)(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitude);
+  void (*init)(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitudeError);
   void (*update)(estimatorKalmanStorage_t* storage);
 
   // Incorporation of additional data

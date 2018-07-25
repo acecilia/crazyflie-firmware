@@ -85,7 +85,7 @@ static void matrixAssertNotNan(arm_matrix_instance_f32* matrix, char *file, int 
 
 #include "debug.h"
 
-static void printMatrix(arm_matrix_instance_f32* matrix) {
+static void printMatrix(const arm_matrix_instance_f32* matrix) {
   const char *rows[] = {"X","Y","Z","PX","PY","PZ","D0","D1","D2"};
 
   DEBUG_PRINT(";X;Y;Z;PX;PY;PZ;D0;D1;D2\n");
@@ -580,10 +580,15 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   storage->S[STATE_Y] += storage->R[1][0] * dx + storage->R[1][1] * dy + storage->R[1][2] * dz;
   storage->S[STATE_Z] += storage->R[2][0] * dx + storage->R[2][1] * dy + storage->R[2][2] * dz - GRAVITY * dt * dt / 2.0f;
 
-  // Body-velocity update: accelerometers - gyros cross velocity - gravity in body frame
-   storage->S[STATE_PX] += dt * (acc->x + gyro->z * storage->S[STATE_PY] - gyro->y * storage->S[STATE_PZ] - storage->R[2][0]*GRAVITY);
-   storage->S[STATE_PY] += dt * (acc->y - gyro->z * storage->S[STATE_PX] + gyro->x * storage->S[STATE_PZ] - storage->R[2][1]*GRAVITY);
-   storage->S[STATE_PZ] += dt * (acc->z + gyro->y * storage->S[STATE_PX] - gyro->x * storage->S[STATE_PY] - storage->R[2][2]*GRAVITY);
+  // Keep previous time step's state for the update
+  float tmpSPX = storage->S[STATE_PX];
+  float tmpSPY = storage->S[STATE_PY];
+  float tmpSPZ = storage->S[STATE_PZ];
+
+  // body-velocity update: accelerometers - gyros cross velocity - gravity in body frame
+  storage->S[STATE_PX] += dt * (acc->x + gyro->z * tmpSPY - gyro->y * tmpSPZ - GRAVITY * storage->R[2][0]);
+  storage->S[STATE_PY] += dt * (acc->y - gyro->z * tmpSPX + gyro->x * tmpSPZ - GRAVITY * storage->R[2][1]);
+  storage->S[STATE_PZ] += dt * (acc->z + gyro->y * tmpSPX - gyro->x * tmpSPY - GRAVITY * storage->R[2][2]);
 
   // acecilia. This check looks reasonable when we are sure that the frame is set in a way that S[STATE_Z] can not be less than zero, but: what if the (0, 0, 0) position of the frame is 1m over the floor? In that case, S[STATE_Z] CAN be less than zero. Thus, comment this for now
   /*
@@ -612,8 +617,6 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
   DEBUG_KALMAN_ASSERT(Hm->numCols == STATE_DIM);
   DEBUG_KALMAN_MATRIX_ASSERT_NOT_NAN(&Htm);
 
-  DEBUG_PRINT("P\n"); printMatrix(&storage->Pm);
-
   // ====== INNOVATION COVARIANCE ======
 
   mat_trans(Hm, &Htm);
@@ -634,6 +637,9 @@ static void scalarUpdate(estimatorKalmanStorage_t* storage, arm_matrix_instance_
     storage->S[i] = storage->S[i] + K[i] * error; // state update
   }
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
+
+  if(true) { DEBUG_PRINT("P\n"); printMatrix(&storage->Pm); }
+  if(true) { DEBUG_PRINT("S\n"); arm_matrix_instance_f32 Sm = { STATE_DIM, 1, (float *)storage->S }; printMatrix(&Sm); }
 
   // ====== COVARIANCE UPDATE ======
   mat_mult(&Km, Hm, &tmpNN1m); // KH
@@ -857,6 +863,8 @@ static void update(estimatorKalmanStorage_t* storage) {
  */
 
 static bool isPositionStable(const estimatorKalmanStorage_t* storage, const float maxStdDev) {
+  if(false) { DEBUG_PRINT("%f, %f, %f\n", (double)storage->P[STATE_X][STATE_X], (double)storage->P[STATE_Y][STATE_Y], (double)storage->P[STATE_Z][STATE_Z]); }
+
   return storage->P[STATE_X][STATE_X] < maxStdDev
       && storage->P[STATE_Y][STATE_Y] < maxStdDev
       && storage->P[STATE_Z][STATE_Z] < maxStdDev;
