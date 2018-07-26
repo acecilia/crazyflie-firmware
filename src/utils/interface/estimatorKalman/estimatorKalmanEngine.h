@@ -56,7 +56,7 @@ typedef struct {
   } constants;
 
   void (*init)(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitudeError);
-  void (*update)(estimatorKalmanStorage_t* storage);
+  void (*update)(estimatorKalmanStorage_t* storage, bool performPrediction);
 
   // Incorporation of additional data
   bool (*enqueueAcceleration)(const estimatorKalmanStorage_t* storage, const Axis3f* acceleration);

@@ -29,6 +29,8 @@ static struct {
   uint32_t timeOfNextTx;
   uint32_t averageTxDelay;
 
+  bool isBuildingCoordinateSystem;
+
   xTimerHandle timer;
 } ctx;
 
@@ -80,6 +82,9 @@ static void init(dwDevice_t *dev) {
   ctx.averageTxDelay = calculateAverageTxDelay(0);
   ctx.timeOfNextTx = calculateRandomDelayToNextTx(ctx.averageTxDelay);
 
+  // Starts without a coordinate system: needs to build it
+  ctx.isBuildingCoordinateSystem = true;
+
   // Timer to execute actions periodically
   ctx.timer = xTimerCreate("timer", M2T(1000), pdTRUE, NULL, timerCallback);
   xTimerStart(ctx.timer, 0);
@@ -126,7 +131,7 @@ static void handleRxPacket(dwDevice_t *dev) {
 #endif
   }
 
-  processRxPacket(dev, ctx.localId, &packet, antennaDelay, ctx.neighboursStorage, ctx.tofStorage);
+  processRxPacket(dev, ctx.localId, &packet, antennaDelay, &ctx.isBuildingCoordinateSystem, ctx.neighboursStorage, ctx.tofStorage);
 }
 
 /**

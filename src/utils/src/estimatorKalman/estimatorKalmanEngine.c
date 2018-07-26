@@ -453,7 +453,7 @@ static void addProcessNoise(estimatorKalmanStorage_t* storage, Axis3f *accStdDev
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
-static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro, float dt) {
+static void introduceQuadcopterDynamicsIntoCovariance(estimatorKalmanStorage_t* storage, Axis3f* gyro, float dt) {
   /* Here we discretize (euler forward) and linearise the quadrocopter dynamics in order
    * to push the covariance forward.
    *
@@ -581,7 +581,18 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
   mat_mult(&tmpNN1m, &tmpNN2m, &storage->Pm); // A P A'
   // Process noise is added after the return from the prediction step
 
-  // ====== PREDICTION STEP ======
+  // Attitude update (rotate by gyroscope), we do this in quaternions. This is the gyroscope angular velocity integrated over the sample period
+  float dtwx = dt*gyro->x;
+  float dtwy = dt*gyro->y;
+  float dtwz = dt*gyro->z;
+  if(dtwx != 0 || dtwy != 0 || dtwz != 0) {
+    updateAttitudeQuaternion(storage, dtwx, dtwy, dtwz);
+  }
+}
+
+static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro, float dt) {
+  DEBUG_KALMAN_ASSERT(dt > 0);
+
   // Position updates in the body frame (will be rotated to inertial frame)
   float dx = storage->S[STATE_PX] * dt + acc->x * dt * dt / 2.0f;
   float dy = storage->S[STATE_PY] * dt + acc->y * dt * dt / 2.0f;
@@ -612,14 +623,6 @@ static void predict(estimatorKalmanStorage_t* storage, Axis3f* acc, Axis3f* gyro
     storage->S[STATE_PZ] = 0;
   }
   */
-
-  // Attitude update (rotate by gyroscope), we do this in quaternions. This is the gyroscope angular velocity integrated over the sample period
-  float dtwx = dt*gyro->x;
-  float dtwy = dt*gyro->y;
-  float dtwz = dt*gyro->z;
-  if(dtwx != 0 || dtwy != 0 || dtwz != 0) {
-    updateAttitudeQuaternion(storage, dtwx, dtwy, dtwz);
-  }
 
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
@@ -812,7 +815,7 @@ static void finalize(estimatorKalmanStorage_t* storage) {
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }
 
-static void update(estimatorKalmanStorage_t* storage) {
+static void update(estimatorKalmanStorage_t* storage, bool performPrediction) {
 #ifdef KALMAN_DECOUPLE_XY
   // Decouple position states
   decoupleState(storage, STATE_X);
@@ -829,17 +832,12 @@ static void update(estimatorKalmanStorage_t* storage) {
     return;
   }
 
-  /*
-   * Prediction step + noise addition
-   */
+  // Tracks whether an update to the state has been made, and the state therefore requires finalization
+  bool doneUpdate = false;
 
-  Axis3f acceleration = {.x = 0, .y = 0, .z = 0 };
-  bool accelerationDataReceived = false;
-  while (hasAccelerationData(storage, &acceleration)) {
-    accelerationDataReceived = true;
-    // Accumulate acceleration. Not done because was not needed yet. Remove the assertion below when implemented
-    DEBUG_KALMAN_ASSERT(false);
-  }
+  /*
+   * Push covariance forward, to avoid it going to zero
+   */
 
   Axis3f angularVelocity = {.x = 0, .y = 0, .z = 0 };
   bool angularVelocityDataReceived = false;
@@ -849,15 +847,32 @@ static void update(estimatorKalmanStorage_t* storage) {
     DEBUG_KALMAN_ASSERT(false);
   }
 
-  predict(storage, &acceleration, &angularVelocity, dt);
+  introduceQuadcopterDynamicsIntoCovariance(storage, &angularVelocity, dt);
 
-  // Add process noise every loop, rather than every prediction
-  Axis3f accStdDev = accelerationDataReceived ? (Axis3f){.x = procNoiseAcc_xy, .y = procNoiseAcc_xy, .z = procNoiseAcc_z } : (Axis3f){.x = 0, .y = 0, .z = 0 };
-  Axis3f angularVelStdDev = angularVelocityDataReceived == true ? (Axis3f){.x = measNoiseGyro_rollpitch, .y = measNoiseGyro_rollpitch, .z = measNoiseGyro_yaw } : (Axis3f){.x = 0, .y = 0, .z = 0 };
-  Axis3f velStdDev = {.x = procNoiseVel, .y = procNoiseVel, .z = procNoiseVel };
-  Axis3f posStdDev = {.x = procNoisePos, .y = procNoisePos, .z = procNoisePos };
-  Axis3f angularPosStdDev = {.x = procNoiseAtt, .y = procNoiseAtt, .z = procNoiseAtt };
-  addProcessNoise(storage, &accStdDev, &velStdDev, &posStdDev, &angularVelStdDev, &angularPosStdDev, dt);
+  /*
+   * Prediction step + noise addition
+   */
+
+  if(performPrediction) {
+    Axis3f acceleration = {.x = 0, .y = 0, .z = 0 };
+    bool accelerationDataReceived = false;
+    while (hasAccelerationData(storage, &acceleration)) {
+      accelerationDataReceived = true;
+      // Accumulate acceleration. Not done because was not needed yet. Remove the assertion below when implemented
+      DEBUG_KALMAN_ASSERT(false);
+    }
+    
+    predict(storage, &acceleration, &angularVelocity, dt);
+
+    Axis3f accStdDev = accelerationDataReceived ? (Axis3f){.x = procNoiseAcc_xy, .y = procNoiseAcc_xy, .z = procNoiseAcc_z } : (Axis3f){.x = 0, .y = 0, .z = 0 };
+    Axis3f angularVelStdDev = angularVelocityDataReceived == true ? (Axis3f){.x = measNoiseGyro_rollpitch, .y = measNoiseGyro_rollpitch, .z = measNoiseGyro_yaw } : (Axis3f){.x = 0, .y = 0, .z = 0 };
+    Axis3f velStdDev = {.x = procNoiseVel, .y = procNoiseVel, .z = procNoiseVel };
+    Axis3f posStdDev = {.x = procNoisePos, .y = procNoisePos, .z = procNoisePos };
+    Axis3f angularPosStdDev = {.x = procNoiseAtt, .y = procNoiseAtt, .z = procNoiseAtt };
+    addProcessNoise(storage, &accStdDev, &velStdDev, &posStdDev, &angularVelStdDev, &angularPosStdDev, dt);
+
+    doneUpdate = true;
+  }
 
   /**
    * Sensor measurements can come in sporadically and faster than the stabilizer loop frequency,
@@ -867,16 +882,19 @@ static void update(estimatorKalmanStorage_t* storage) {
   positionMeasurement_t position;
   while (hasPositionData(storage, &position)) {
     updateWithPosition(storage, &position);
+    doneUpdate = true;
   }
 
   distanceMeasurement_t distance;
   while (hasDistanceData(storage, &distance)) {
     updateWithDistance(storage, &distance);
+    doneUpdate = true;
   }
 
   measurement_t velocity;
   while (hasVelocityData(storage, &velocity)) {
     updateWithVelocity(storage, &velocity);
+    doneUpdate = true;
   }
 
   /**
@@ -886,10 +904,12 @@ static void update(estimatorKalmanStorage_t* storage) {
    * - correctness of the covariance matrix is ensured
    */
 
-  finalize(storage);
+  if(doneUpdate) {
+    finalize(storage);
 
-  // Save state to the storage
-  storage->lastUpdate = tick;
+    // Save state to the storage
+    storage->lastUpdate = tick;
+  }
 
   DEBUG_KALMAN_ASSERT_NOT_NAN(storage);
 }

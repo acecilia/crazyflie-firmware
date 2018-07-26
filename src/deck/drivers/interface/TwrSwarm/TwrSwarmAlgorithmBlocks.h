@@ -23,8 +23,8 @@ unsigned int countNeighbours(neighbourData_t storage[]);
 
 unsigned int calculatePacketSize(lpsSwarmPacket_t* packet);
 void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeqNr, neighbourData_t neighboursStorage[], tofData_t tofStorage[]);
-void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, const uint16_t antennaDelay, neighbourData_t neighboursStorage[], tofData_t tofStorage[]);
+void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, const uint16_t antennaDelay, bool* isBuildingCoordinateSystem, neighbourData_t neighboursStorage[], tofData_t tofStorage[]);
 
-void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighboursStorage[], tofData_t tofStorage[]);
+void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinateSystem, neighbourData_t neighboursStorage[], tofData_t tofStorage[]);
 void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, tofData_t tofStorage[]);
 #endif /* TwrSwarmAlgorithmBlocks_h */

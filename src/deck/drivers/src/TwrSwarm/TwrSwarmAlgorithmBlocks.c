@@ -9,8 +9,14 @@
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
 #include "TwrSwarmDebug.h"
-#include "debug.h"
 #endif
+
+// Example of debug print
+/*
+#include "debug.h"
+
+if(false) { DEBUG_PRINT("PS: %f, %f, %f\n", (double)neighbourData->estimator.P[STATE_X][STATE_X], (double)neighbourData->estimator.P[STATE_Y][STATE_Y], (double)neighbourData->estimator.P[STATE_Z][STATE_Z]); }
+ */
 
 // #pragma GCC diagnostic warning "-Wconversion"
 
@@ -48,6 +54,15 @@ static uint32_t ticksPerSecond = M2T(1000);
 
 /**********************************/
 
+
+/* Other constants */
+/**********************************/
+
+#define TOF_TO_DISTANCE SPEED_OF_LIGHT / LOCODECK_TS_FREQ
+
+/**********************************/
+
+
 /**
  Count the number of elements inside the neighbours storage
  */
@@ -76,13 +91,6 @@ unsigned int countTof(tofData_t storage[]) {
   }
 
   return count;
-}
-
-/**
- Calculate the distance associated with a tof
- */
-float calculateDistance(const uint16_t tof) {
-  return SPEED_OF_LIGHT * (tof / LOCODECK_TS_FREQ);
 }
 
 /**
@@ -304,7 +312,7 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeq
   txPacket->header.payloadLength = payloadLength;
 }
 
-void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, const uint16_t antennaDelay, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
+void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, const uint16_t antennaDelay, bool* isBuildingCoordinateSystem, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
   // Get neighbour data
   locoId_t remoteId = rxPacket->header.sourceId;
   neighbourData_t* neighbourData = findNeighbourData(neighboursStorage, remoteId, true);
@@ -368,14 +376,15 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       uint16_t tofWithAntennaDelay = (uint16_t)((localRound - localReply) / 2);
       uint16_t tof = tofWithAntennaDelay - antennaDelay;
 
-      // Store tof
+      // Store tof. Reject outliers
+      // acecilia. TODO: use leaky bucket?
       if(tof < 2000) {
         tofData_t* tofData = findTofData(tofStorage, localId, remoteId, true);
         tofData->tof = tof;
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
         debug.tof = tofData->tof;
-        debug.distance = calculateDistance(tofData->tof);
+        debug.distance = tofData->tof * TOF_TO_DISTANCE;
 #endif
       }
 
@@ -420,15 +429,19 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   // Save the localRx, so we can calculate localReply when responding in the future
   neighbourData->localRx = localRx;
 
-  updatePositionOf(neighbourData, neighboursStorage, tofStorage);
+  updatePositionOf(neighbourData, isBuildingCoordinateSystem, neighboursStorage, tofStorage);
   updateOwnPosition(localId, remoteId, neighbourData, tofStorage);
 
   // HACK for simulating 2D
-  tofMeasurement_t tofData;
-  tofData.timestamp = xTaskGetTickCount();
-  tofData.distance = 0;
-  tofData.stdDev = 0;
-  estimatorKalmanEnqueueTOF(&tofData);
+  unsigned int neighbours = countNeighbours(neighboursStorage);
+  if(neighbours <= 3) {
+    // Set z coordinate to zero
+    tofMeasurement_t tofData;
+    tofData.timestamp = xTaskGetTickCount();
+    tofData.distance = 0;
+    tofData.stdDev = 0;
+    estimatorKalmanEnqueueTOF(&tofData);
+  }
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
   if(neighbourData->estimator.isInit) {
@@ -440,13 +453,17 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
 #endif
 }
 
-#define DISTANCE_STD_DEV (float) 0.25
+/**
+ The standard deviation of a tof measurement. The value passed here (10) was obtained experimentally
+ EDIT: the value is not anymore the standard deviation, but a random value obtained experimentally -- why?!
+ */
+#define DISTANCE_STD_DEV 0.25 // 10 * TOF_TO_DISTANCE
 
-void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
+void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinateSystem, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
   // Give the initial state of the drone if needed
   if(!neighbourData->estimator.isInit) {
     /*
-     * In order to avoid trilaterating an initial position, we better pass a "fake" value with very high standard deviation and wait until further meassurements stabilize the position estimation
+     In order to avoid trilaterating an initial position, we better pass a "fake" value with very high standard deviation and wait until further meassurements stabilize the position estimation
      */
 
     // In Meters
@@ -473,7 +490,7 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
   unsigned int neighbours = countNeighbours(neighboursStorage);
 
   // Assume some position values while building the coordinate system
-  if(true /* is building the coordinate system*/) {
+  if(*isBuildingCoordinateSystem) {
     if(neighbours == 1) {
       // Simulate 0D: the only drone known will be (0, 0, 0)
       positionMeasurement_t position = { .x = 0, .y = 0, .z = 0, .stdDev = 0 };
@@ -486,6 +503,10 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
       // Simulate 2D
       positionMeasurement_t position = { .x = NAN, .y = NAN, .z = 0, .stdDev = 0 };
       estimatorKalmanEngine.enqueuePosition(&neighbourData->estimator, &position);
+    }
+
+    if(neighbours > 3) {
+      *isBuildingCoordinateSystem = false;
     }
   }
 
@@ -501,10 +522,9 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
         if (tofData != NULL) {
           estimatorKalmanStorage_t* estimator = &neighboursStorage[i].estimator;
           bool isInit = estimator->isInit;
-          bool positionIsStable = estimatorKalmanEngine.isPositionStable(estimator, 0.01);
-          bool velocityIsStable = estimatorKalmanEngine.isVelocityStable(estimator, 0.01);
+          bool positionIsStable = estimatorKalmanEngine.isPositionStable(estimator, DISTANCE_STD_DEV);
 
-          if(isInit && positionIsStable && velocityIsStable) {
+          if(isInit && positionIsStable) {
             // Run update without new data, to get the most updated position (basically just run the prediction)
             // estimatorKalmanEngine.update(estimator);
 
@@ -514,7 +534,7 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
             distances[distancesIndex].x = positionData.x;
             distances[distancesIndex].y = positionData.y;
             distances[distancesIndex].z = positionData.z;
-            distances[distancesIndex].distance = calculateDistance(tofData->tof);
+            distances[distancesIndex].distance = tofData->tof * TOF_TO_DISTANCE;
             distances[distancesIndex].stdDev = DISTANCE_STD_DEV;
             distancesIndex++;
           }
@@ -529,7 +549,7 @@ void updatePositionOf(neighbourData_t* neighbourData, neighbourData_t neighbours
   }
 
   // Use all the enqueued data to calculate the position
-  estimatorKalmanEngine.update(&neighbourData->estimator);
+  estimatorKalmanEngine.update(&neighbourData->estimator, false);
 }
 
 void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, tofData_t tofStorage[]) {
@@ -540,7 +560,7 @@ void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* nei
     tofData_t* tofData = findTofData(tofStorage, localId, remoteId, false);
     if(tofData != NULL) {
       distanceMeasurement_t dist = {
-        .distance = calculateDistance(tofData->tof),
+        .distance = tofData->tof * TOF_TO_DISTANCE,
         .x = remotePosition.x,
         .y = remotePosition.y,
         .z = remotePosition.z,
