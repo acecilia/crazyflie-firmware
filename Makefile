@@ -230,7 +230,7 @@ CC = $(CROSS_COMPILE)gcc
 ##### CLANG #####
 # Notes:
 # To use clang for compilation comment the line above, and uncomment lines below
-# In order to use clang is also necesary to patch CMSIS as specified here: https://github.com/SL-RU/stm32-emacs (patch for the vfpcc register)
+# In order to use clang is also necesary to patch CMSIS as specified here: https://github.com/SL-RU/stm32-emacs (patch for the vfpcc register). The reason for this is here: https://gcc.gnu.org/ml/gcc-patches/2017-04/msg00443.html
 # In theory, it should be also possible to as, link, size, but not tested yet
 
 # CC = clang
