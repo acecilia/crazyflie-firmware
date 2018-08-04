@@ -342,7 +342,7 @@ static void usdLogTask(void* prm)
    * requires up to 100 elements for 1kHz logging */
   struct usdLogStruct {
     uint32_t tick;
-    uint8_t data[usdLogConfig.numBytes];
+    uint8_t data[100];
   };
 
   /* allocate memory for buffer */

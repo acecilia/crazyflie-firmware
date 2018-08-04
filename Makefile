@@ -226,6 +226,18 @@ endif
 ############### Compilation configuration ################
 AS = $(CROSS_COMPILE)as
 CC = $(CROSS_COMPILE)gcc
+
+##### CLANG #####
+# Notes:
+# To use clang for compilation comment the line above, and uncomment lines below
+# In order to use clang is also necesary to patch CMSIS as specified here: https://github.com/SL-RU/stm32-emacs (patch for the vfpcc register)
+# In theory, it should be also possible to as, link, size, but not tested yet
+
+# CC = clang
+# CFLAGS += -target arm-none-eabi
+# CFLAGS += -I /usr/local/Cellar/arm-gcc-bin/7-2018-q2-update/arm-none-eabi/include
+##### CLANG #####
+
 LD = $(CROSS_COMPILE)gcc
 SIZE = $(CROSS_COMPILE)size
 OBJCOPY = $(CROSS_COMPILE)objcopy
