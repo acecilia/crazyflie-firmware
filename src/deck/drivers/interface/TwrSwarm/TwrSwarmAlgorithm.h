@@ -27,6 +27,8 @@ typedef struct {
  */
 typedef struct {
   locoId_t sourceId;
+  uint8_t type;
+
   uint8_t seqNr; // Sequence number of this packet
   uint64_t tx; // TODO: see if we can reduce the size of data type
 

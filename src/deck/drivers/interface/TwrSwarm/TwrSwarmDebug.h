@@ -37,6 +37,8 @@ typedef struct {
   uint32_t idFailure;
   uint32_t reflections;
 
+  uint8_t drone;
+
   void (*blink)(led_t led);
   void (*init)(void);
 } debug_t;

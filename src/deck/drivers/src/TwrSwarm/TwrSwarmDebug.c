@@ -1,6 +1,7 @@
 #include "TwrSwarmDebug.h"
 #include "TwrSwarmDump.h"
 #include "log.h"
+#include "param.h"
 
 #include "FreeRTOS.h"
 #include "timers.h"
@@ -44,6 +45,8 @@ debug_t debug = {
   .measurementFailure = 0,
   .idFailure = 0,
   .reflections = 0,
+
+  .drone = 0,
 
   .blink = blink,
   .init = init
@@ -109,6 +112,13 @@ static void init() {
   twrSwarmDumpInit();
 }
 
+// Stock log groups
+LOG_GROUP_START(kalman)
+LOG_ADD(LOG_FLOAT, stateX, &debug.position.x)
+LOG_ADD(LOG_FLOAT, stateY, &debug.position.y)
+LOG_ADD(LOG_FLOAT, stateZ, &debug.position.z)
+LOG_GROUP_STOP(kalman)
+
 LOG_GROUP_START(twrSwarm)
 LOG_ADD(LOG_FLOAT, xPosition, &debug.position.x)
 LOG_ADD(LOG_FLOAT, yPosition, &debug.position.y)
@@ -141,3 +151,7 @@ LOG_ADD(LOG_UINT32, measurementFail, &debug.measurementFailure)
 LOG_ADD(LOG_UINT32, idFail, &debug.idFailure)
 LOG_ADD(LOG_UINT32, reflections, &debug.reflections)
 LOG_GROUP_STOP(twrSwarm)
+
+PARAM_GROUP_START(twrSwarm)
+PARAM_ADD(PARAM_UINT8, drone, &debug.drone)
+PARAM_GROUP_STOP(twrSwarm)

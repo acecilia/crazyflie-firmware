@@ -8,6 +8,8 @@
 
 #include "debug.h"
 
+#define PACKET_TYPE_SWARM 0x47
+
 // TODO: remove and do it smarter
 #define ANTENNA_OFFSET_METERS 154.6
 #define ANTENNA_DELAY (uint16_t)((ANTENNA_OFFSET_METERS * LOCODECK_TS_FREQ) / SPEED_OF_LIGHT)
@@ -55,6 +57,8 @@ static uint32_t now() {
 static void timerCallback(xTimerHandle timer) {
   // Adjust average tx delay based on the number of known drones around
   ctx.averageTxDelay = calculateAverageTxDelay(ctx.neighboursStorage);
+
+  DEBUG_PRINT("%d\n", countNeighbours(ctx.neighboursStorage));
 }
 
 /**
@@ -99,6 +103,7 @@ static void transmit(dwDevice_t *dev) {
 #endif
 
   lpsSwarmPacket_t* txPacket = &packet;
+  txPacket->header.type = PACKET_TYPE_SWARM;
 
   setTxData(txPacket, ctx.localId, &ctx.nextTxSeqNr, ctx.neighboursStorage, ctx.tofStorage);
   unsigned int packetSize = calculatePacketSize(txPacket);
@@ -123,6 +128,12 @@ static void transmit(dwDevice_t *dev) {
  Handle the data coming in a received packet
  */
 static void handleRxPacket(dwDevice_t *dev) {
+  // If the received packet is not of our type, discard it
+  if(packet.header.type != PACKET_TYPE_SWARM) {
+    return;
+  }
+
+
   // Makes sure the id is unique among the neighbours around, and regenerate it only if the local ranging information is less than the information coming on the packet
   if (packet.header.sourceId == ctx.localId) {
     ctx.localId = generateIdNotInPacket(ctx.neighboursStorage, &packet);

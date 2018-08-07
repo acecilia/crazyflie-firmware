@@ -449,7 +449,15 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
     estimatorKalmanEngine.getPosition(&neighbourData->estimator, &pos);
     debug.localRx = pos.x;
   }
-  estimatorKalmanGetEstimatedPos(&debug.position);
+
+  neighbourData_t* droneData = &neighboursStorage[debug.drone];
+  if(droneData != NULL && droneData->estimator.isInit) {
+    estimatorKalmanEngine.getPosition(&droneData->estimator, &debug.position);
+  } else {
+    debug.position.x = 1;
+    debug.position.y = 2;
+    debug.position.z = 3;
+  }
 #endif
 }
 
