@@ -40,7 +40,25 @@ if(false) { DEBUG_PRINT("PS: %f, %f, %f\n", (double)neighbourData->estimator.P[S
 /* Timestamp truncation */
 /**********************************/
 
-#define DW1000_MAXIMUM_COUNT_MASK (uint64_t)(0xFFFFFFFFFF) //The maximum timestamp the DW1000 can return (40 bits)
+#define DW1000_MAXIMUM_COUNT_MASK (uint64_t)(createMask(40)) // The maximum timestamp the DW1000 can return (40 bits)
+
+static inline uint64_t min(const uint64_t left, const uint64_t right) {
+  if (left <= right) {
+    return left;
+  } else {
+    return right;
+  }
+}
+
+uint64_t createMask(const uint8_t numberOfOnes) {
+  uint64_t mask = 0;
+  for(unsigned int i = 0; i < numberOfOnes; i++) {
+    mask |= ((uint64_t) 1 << i);
+  }
+  return mask;
+}
+
+#define PACKET_TIMESTAMP_MASK (uint64_t)(min(DW1000_MAXIMUM_COUNT_MASK, createMask(sizeof(packetTimestamp_t) * CHAR_BIT))) // The mask to use when working with timestamps that are coming from a transmission or are going to be transmitted
 
 /**********************************/
 
@@ -344,15 +362,15 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   dwGetReceiveTimestamp(dev, &rxTimestamp);
 
   // Timestamp remote values
-  const uint64_t prevRemoteTx = neighbourData->remoteTx;
-  const uint64_t remoteTx = rxPacket->header.tx;
+  const packetTimestamp_t prevRemoteTx = neighbourData->remoteTx;
+  const packetTimestamp_t remoteTx = rxPacket->header.tx;
 
   // Timestamp local values
-  const uint64_t prevLocalRx = neighbourData->localRx;
-  const uint64_t localRx = rxTimestamp.full;
+  const packetTimestamp_t prevLocalRx = neighbourData->localRx;
+  const packetTimestamp_t localRx = rxTimestamp.full;
 
   // Calculate clock correction
-  const double clockCorrectionCandidate = clockCorrectionEngine.calculateClockCorrection(localRx, prevLocalRx, remoteTx, prevRemoteTx, 0xFFFFFFFFFF /* 40 bits */);
+  const double clockCorrectionCandidate = clockCorrectionEngine.calculateClockCorrection(localRx, prevLocalRx, remoteTx, prevRemoteTx, PACKET_TIMESTAMP_MASK);
   bool clockCorrectionCandidateAccepted = clockCorrectionEngine.updateClockCorrection(&neighbourData->clockCorrectionStorage, clockCorrectionCandidate);
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
   debug.clockUpdated++;
@@ -371,15 +389,15 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
 #endif
 
       // Timestamp remote values
-      const uint64_t remoteRx = rxPacket->payload[i].rx;
+      const packetTimestamp_t remoteRx = rxPacket->payload[i].rx;
 
       // Timestamp local values
-      const uint64_t localTx = rxPacket->payload[i].tx;
+      const packetTimestamp_t localTx = rxPacket->payload[i].tx;
 
       // Calculations
-      const uint32_t remoteReply = (uint32_t)(remoteTx - remoteRx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
-      const uint32_t localReply = (uint32_t)(remoteReply * clockCorrection);
-      const uint32_t localRound = (uint32_t)(localRx - localTx); // Casting uint64_t to uint32_t removes the effect of the clock wrapping around
+      const packetTimestamp_t remoteReply = remoteTx - remoteRx;
+      const packetTimestamp_t localReply = (packetTimestamp_t)(remoteReply * clockCorrection);
+      const packetTimestamp_t localRound = localRx - localTx;
 
       // TODO: see how can we reduce the error for antenna delay calculation
       // Calculate tof

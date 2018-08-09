@@ -23,25 +23,7 @@ const estimatorKalmanEngine_t estimatorKalmanEngine = {
 
 // Test helper functions
 
-#define DW1000_MAXIMUM_COUNT (uint64_t)( 1099511627775 ) //The maximum timestamp the DW1000 can return (40 bits: 2^40 - 1)
-
-/**
- Add an entry to the neighbours dictionary
- */
-/*
-static void testFillNeighboursDictionary(dict* dct, const locoId_t id, const neighbourData_t data) {
-  neighbourData_t* result = getDataForNeighbour(dct, id, true);
-  *result = data;
-}*/
-
-/**
- Add an entry to the tof dictionary
- */
-/*
-static void testFillTofDictionary(dict* dct, const locoId_t id1, const locoId_t id2, const tofData_t data) {
-  tofData_t* result = getTofDataBetween(dct, id1, id2, true);
-  *result = data;
-}*/
+#define DW1000_MAXIMUM_COUNT (uint64_t)(0xFFFFFFFFFF) //The maximum timestamp the DW1000 can return
 
 /**
  A function to find a pair inside the payload of a packet. Needed because when passing the dictionary data to an array, there order is not specified
@@ -77,6 +59,27 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+}
+
+void testCreateMask() {
+  // Test
+  uint64_t result1 = createMask(8);
+  uint64_t result2 = createMask(16);
+  uint64_t result3 = createMask(32);
+  uint64_t result4 = createMask(40);
+  uint64_t result5 = createMask(sizeof(packetTimestamp_t) * CHAR_BIT);
+
+  // Assert
+  uint64_t expectedResult1 = 0xFF;
+  uint64_t expectedResult2 = 0xFFFF;
+  uint64_t expectedResult3 = 0xFFFFFFFF;
+  uint64_t expectedResult4 = 0xFFFFFFFFFF;
+  uint64_t expectedResult5 = 0xFFFFFFFF;
+  TEST_ASSERT_EQUAL_UINT64(expectedResult1, result1);
+  TEST_ASSERT_EQUAL_UINT64(expectedResult2, result2);
+  TEST_ASSERT_EQUAL_UINT64(expectedResult3, result3);
+  TEST_ASSERT_EQUAL_UINT64(expectedResult4, result4);
+  TEST_ASSERT_EQUAL_UINT64(expectedResult5, result5);
 }
 
 void testGetHashFromIds() {

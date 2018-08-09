@@ -113,8 +113,7 @@ static void transmit(dwDevice_t *dev) {
 
   // Set tx time inside txPacket
   dwTime_t tx = findTransmitTimeAsSoonAsPossible(dev);
-  uint64_t localTx = tx.full;
-  txPacket->header.tx = localTx;
+  txPacket->header.tx = (uint32_t)tx.full;
 
   // Set data
   dwSetData(dev, (uint8_t*)txPacket, packetSize);

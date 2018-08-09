@@ -8,6 +8,7 @@
 
 typedef uint8_t locoId_t;
 typedef uint16_t locoIdx2_t;
+typedef uint32_t packetTimestamp_t;
 
 #define NEIGHBOUR_STORAGE_CAPACITY 16
 #define TOF_STORAGE_CAPACITY (NEIGHBOUR_STORAGE_CAPACITY*(NEIGHBOUR_STORAGE_CAPACITY - 1) / 2)
@@ -17,8 +18,8 @@ typedef uint16_t locoIdx2_t;
  */
 typedef struct {
   locoId_t id;
-  uint64_t rx;
-  uint64_t tx;
+  packetTimestamp_t rx;
+  packetTimestamp_t tx;
   uint16_t tof;
 } __attribute__((packed)) payload_t;
 
@@ -30,7 +31,7 @@ typedef struct {
   uint8_t type;
 
   uint8_t seqNr; // Sequence number of this packet
-  uint64_t tx; // TODO: see if we can reduce the size of data type
+  packetTimestamp_t tx; // TODO: see if we can reduce the size of data type
 
   uint8_t payloadLength; // Allows a logic limit of 256 pairs (which limits the maximum number of drones participating in the swarm to 256)
 } __attribute__((packed)) lpsSwarmPacketHeader_t;
@@ -54,8 +55,8 @@ typedef struct {
   bool IsValid;
 
   // Values to calculate clockCorrection
-  uint64_t localRx; // To be set after reception
-  uint64_t remoteTx; // To be set after reception
+  packetTimestamp_t localRx; // To be set after reception
+  packetTimestamp_t remoteTx; // To be set after reception
 
   clockCorrectionStorage_t clockCorrectionStorage;
   uint8_t expectedSeqNr; // Expected sequence number for the received packet
