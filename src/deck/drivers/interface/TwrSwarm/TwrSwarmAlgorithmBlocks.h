@@ -12,12 +12,14 @@ void initRandomizationEngine(dwDevice_t *dev);
 locoId_t generateId(void);
 locoId_t generateIdNotInPacket(neighbourData_t neighboursStorage[], lpsSwarmPacket_t* packet);
 locoIdx2_t getHashFromIds(const locoId_t id1, const locoId_t id2);
+bool hashContainsId(const locoIdx2_t hash, const locoId_t id);
 
 void adjustTxRxTime(dwTime_t *time);
 dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev);
 
 tofData_t* findTofData(tofData_t storage[], const locoId_t id1, const locoId_t id2, const bool insertIfNotFound);
 unsigned int countTof(tofData_t storage[]);
+void removeOutdatedData(neighbourData_t neighbourDataStorage[], tofData_t tofDataStorage[]);
 neighbourData_t* findNeighbourData(neighbourData_t storage[], const locoId_t id, const bool insertIfNotFound);
 unsigned int countNeighbours(neighbourData_t storage[]);
 

@@ -116,7 +116,13 @@ locoIdx2_t getHashFromIds(const locoId_t id1, const locoId_t id2) {
     rightPart = id1;
   }
 
-  return (locoIdx2_t)((leftPart << (sizeof(locoId_t) * CHAR_BIT)) | rightPart);
+  locoId_t array[2] = {rightPart, leftPart};
+  return *(locoIdx2_t*)array;
+}
+
+bool hashContainsId(const locoIdx2_t hash, const locoId_t id) {
+  locoId_t* array = (locoId_t*)&hash;
+  return array[0] == id || array[1] == id;
 }
 
 /**
@@ -221,21 +227,13 @@ dwTime_t findTransmitTimeAsSoonAsPossible(dwDevice_t *dev) {
 
 tofData_t* findTofData(tofData_t storage[], const locoId_t id1, const locoId_t id2, const bool insertIfNotFound) {
   int indexToInitialize = -1;
-  // TODO: lifetime span of the tof data
-  // uint32_t oldestUpdateTime = xTaskGetTickCount();
-
   locoIdx2_t id = getHashFromIds(id1, id2);
 
   for(unsigned int i = 0; i < TOF_STORAGE_CAPACITY; i++) {
     if(storage[i].isInitialized && storage[i].id == id) {
       return &storage[i];
-    } else if(insertIfNotFound && indexToInitialize < 0) {
-      if(!storage[i].isInitialized) {
-        indexToInitialize = i;
-      } else if(/*anchorStorage[i].lastUpdateTime < oldestUpdateTime*/ false) {
-        // oldestUpdateTime = anchorStorage[i].lastUpdateTime;
-        indexToInitialize = i;
-      }
+    } else if(insertIfNotFound && indexToInitialize < 0 && !storage[i].isInitialized) {
+      indexToInitialize = i;
     }
   }
 
@@ -248,21 +246,32 @@ tofData_t* findTofData(tofData_t storage[], const locoId_t id1, const locoId_t i
   }
 }
 
+void removeOutdatedData(neighbourData_t neighbourDataStorage[], tofData_t tofDataStorage[]) {
+  for(unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
+    if (neighbourDataStorage[i].isInitialized && !neighbourDataStorage[i].IsValid) {
+      // Remove the tof associated with the neighbour
+      for(unsigned int i = 0; i < TOF_STORAGE_CAPACITY; i++) {
+        if (hashContainsId(tofDataStorage[i].id, neighbourDataStorage[i].id)){
+          memset(&tofDataStorage[i], 0, sizeof(tofData_t));
+        }
+      }
+
+      // Remove the neighbour
+      memset(&neighbourDataStorage[i], 0, sizeof(neighbourData_t));
+    } else {
+      neighbourDataStorage[i].IsValid = false;
+    }
+  }
+}
+
 neighbourData_t* findNeighbourData(neighbourData_t storage[], const locoId_t id, const bool insertIfNotFound) {
   int indexToInitialize = -1;
-  // TODO: lifetime span of the tof data
-  // uint32_t oldestUpdateTime = xTaskGetTickCount();
 
   for(unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
     if(storage[i].isInitialized && storage[i].id == id) {
       return &storage[i];
-    } else if(insertIfNotFound && indexToInitialize < 0) {
-      if(!storage[i].isInitialized) {
-        indexToInitialize = i;
-      } else if(/*anchorStorage[i].lastUpdateTime < oldestUpdateTime*/ false) {
-        // oldestUpdateTime = anchorStorage[i].lastUpdateTime;
-        indexToInitialize = i;
-      }
+    } else if(insertIfNotFound && indexToInitialize < 0 && !storage[i].isInitialized) {
+      indexToInitialize = i;
     }
   }
 
@@ -316,6 +325,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   // Get neighbour data
   locoId_t remoteId = rxPacket->header.sourceId;
   neighbourData_t* neighbourData = findNeighbourData(neighboursStorage, remoteId, true);
+  neighbourData->IsValid = true;
 
   // Check sequence number
   uint8_t seqNr = rxPacket->header.seqNr;
@@ -475,13 +485,13 @@ void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinate
      */
 
     // In Meters
-    float positionStdDev = estimatorKalmanEngine.constants.maximumAbsolutePosition;
+    float positionStdDev = estimatorKalmanEngine.maximumAbsolutePosition;
     const vec3Measurement_t initialPosition = {
       .value = { .x = 0, .y = 0, .z = 0 },
       .stdDev = { .x = positionStdDev, .y = positionStdDev, .z = positionStdDev }
     };
     // In m/s
-    float velocityStdDev = estimatorKalmanEngine.constants.maximumAbsoluteVelocity;
+    float velocityStdDev = estimatorKalmanEngine.maximumAbsoluteVelocity;
     const vec3Measurement_t initialVelocity = {
       .value = { .x = 0, .y = 0, .z = 0 },
       .stdDev = { .x = velocityStdDev, .y = velocityStdDev, .z = velocityStdDev }
@@ -500,7 +510,7 @@ void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinate
   // Assume some position values while building the coordinate system
   if(*isBuildingCoordinateSystem) {
     if(neighbours == 1) {
-      // Simulate 0D: the only drone known will be (0, 0, 0)
+      // Simulate 0D: the only known drone will be (0, 0, 0)
       positionMeasurement_t position = { .x = 0, .y = 0, .z = 0, .stdDev = 0 };
       estimatorKalmanEngine.enqueuePosition(&neighbourData->estimator, &position);
     } if(neighbours == 2) {
@@ -511,9 +521,7 @@ void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinate
       // Simulate 2D
       positionMeasurement_t position = { .x = NAN, .y = NAN, .z = 0, .stdDev = 0 };
       estimatorKalmanEngine.enqueuePosition(&neighbourData->estimator, &position);
-    }
-
-    if(neighbours > 3) {
+    } else if(neighbours > 3) {
       *isBuildingCoordinateSystem = false;
     }
   }

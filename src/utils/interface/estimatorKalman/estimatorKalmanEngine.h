@@ -50,10 +50,8 @@ typedef struct {
   /**
    Constants defined and used inside the estimator implementation. Externalized here in case they are needed
    */
-  struct {
-    float maximumAbsolutePosition;        // In meters
-    float maximumAbsoluteVelocity;        // In m/s
-  } constants;
+  float maximumAbsolutePosition;        // In meters
+  float maximumAbsoluteVelocity;        // In m/s
 
   void (*init)(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitudeError);
   void (*update)(estimatorKalmanStorage_t* storage, bool performPrediction);

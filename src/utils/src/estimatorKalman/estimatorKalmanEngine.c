@@ -996,10 +996,9 @@ const estimatorKalmanConstants_t estimatorKalmanConstants = {
 };
 
 const estimatorKalmanEngine_t estimatorKalmanEngine = {
-  .constants = {
-    .maximumAbsolutePosition = MAX_POSITION,
-    .maximumAbsoluteVelocity = MAX_VELOCITY,
-  },
+  .maximumAbsolutePosition = MAX_POSITION,
+  .maximumAbsoluteVelocity = MAX_VELOCITY,
+
   .init = init,
   .update = update,
 

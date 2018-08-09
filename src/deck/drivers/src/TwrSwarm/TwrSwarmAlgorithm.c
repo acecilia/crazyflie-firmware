@@ -58,7 +58,10 @@ static void timerCallback(xTimerHandle timer) {
   // Adjust average tx delay based on the number of known drones around
   ctx.averageTxDelay = calculateAverageTxDelay(ctx.neighboursStorage);
 
-  DEBUG_PRINT("%d\n", countNeighbours(ctx.neighboursStorage));
+  removeOutdatedData(ctx.neighboursStorage, ctx.tofStorage);
+
+  DEBUG_PRINT("N: %d\n", countNeighbours(ctx.neighboursStorage));
+  DEBUG_PRINT("Tof: %d\n", countTof(ctx.tofStorage));
 }
 
 /**

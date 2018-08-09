@@ -51,6 +51,7 @@ typedef struct {
 typedef struct {
   bool isInitialized;
   locoId_t id;
+  bool IsValid;
 
   // Values to calculate clockCorrection
   uint64_t localRx; // To be set after reception

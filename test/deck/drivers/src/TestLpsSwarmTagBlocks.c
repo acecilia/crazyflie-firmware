@@ -12,7 +12,7 @@
 #include "mock_estimator_kalman.h"
 #include "mock_freertosMocks.h"
 #include "mock_estimatorKalmanEngine.h"
-estimatorKalmanEngine_t estimatorKalmanEngine = {
+const estimatorKalmanEngine_t estimatorKalmanEngine = {
   .init = NULL,
   .update = NULL,
   .enqueuePosition = NULL,
@@ -93,6 +93,28 @@ void testGetHashFromIds() {
   TEST_ASSERT_EQUAL_UINT16(expectedResult, result1);
   TEST_ASSERT_EQUAL_UINT16(expectedResult, result2);
 }
+
+void testHashContainsId() {
+  // Fixture
+  locoId_t id1 = 0xCD;
+  locoId_t id2 = 0xAB;
+  locoIdx2_t hash1 = 0xCDAB;
+  locoIdx2_t hash2 = 0xFFFF;
+
+  // Test
+  locoIdx2_t result1 = hashContainsId(hash1, id1);
+  locoIdx2_t result2 = hashContainsId(hash1, id2);
+  locoIdx2_t result3 = hashContainsId(hash2, id1);
+  locoIdx2_t result4 = hashContainsId(hash2, id2);
+
+
+  // Assert
+  TEST_ASSERT_TRUE(result1);
+  TEST_ASSERT_TRUE(result2);
+  TEST_ASSERT_FALSE(result3);
+  TEST_ASSERT_FALSE(result4);
+}
+
 
 /**
  Adjust the bit size of the number
@@ -299,6 +321,20 @@ void testGetDataForNeighbourAndCount() {
   TEST_ASSERT_EQUAL_UINT(numberOfNeighbours, count);
 }
 
+void testGetTofDataAndCount() {
+  // Fixture
+  unsigned int numberOfTof = TOF_STORAGE_CAPACITY / 2;
+
+  // Test
+  for (uint8_t i = 0; i < numberOfTof; i++) {
+    findTofData(tofStorage, i, i + 1, true);
+  }
+
+  // Assert
+  unsigned int count = countTof(tofStorage);
+  TEST_ASSERT_EQUAL_UINT(numberOfTof, count);
+}
+
 void testSetTxDataWithoutPayload() {
   // Fixture
   locoId_t sourceId = 6;
@@ -358,6 +394,8 @@ void testSetTxDataWithPayload() {
   TEST_ASSERT_EQUAL_UINT8(1, nextSeqNr);
 }
 
+/* TESTS THAT REQUIRE UPDATE */
+/*
 void testProcessRxPacketWithPayload() {
   // Event timestamps:
   // * prevRemoteTx                                 ---> prevlocalRx = (clockCorrection * prevRemoteTx) + tof
@@ -366,6 +404,7 @@ void testProcessRxPacketWithPayload() {
 
   // Expected values: giving them pair values we ensure proper integer operations (mainly division) when calculating the actual values
   uint32_t antennaDelay = 32120;
+  bool isBuildingCoordinateSystem = true;
   uint32_t tof = 1234;                                  // Tof meassured by local clock
   uint32_t tofWithAntennaDelay = tof + antennaDelay;    // Tof with antennaDelay meassured by local clock
   double clockCorrection = 1.0 + 10e-6;                 // Local clock works <clockCorrection> times faster than remote clock
@@ -416,7 +455,7 @@ void testProcessRxPacketWithPayload() {
   xTaskGetTickCount_IgnoreAndReturn(tickCount);
 
   // Test
-  processRxPacket(NULL, localId, &rxPacket, antennaDelay, neighbourStorage, tofStorage);
+  processRxPacket(NULL, localId, &rxPacket, antennaDelay, &isBuildingCoordinateSystem, neighbourStorage, tofStorage);
 
   // Verify result
   neighbourData_t* currentNeighbourData = findNeighbourData(neighbourStorage, remoteId, false);
@@ -444,6 +483,7 @@ void testProcessRxPacketWithoutPayload() {
 
   // Timestamp values
   uint32_t antennaDelay = 32120;
+  bool isBuildingCoordinateSystem = true;
   uint64_t prevLocalRx = adjustBitSize(4500, mask);
   uint64_t localRx = adjustBitSize(prevLocalRx + localRxDifference, mask);
   uint64_t prevRemoteTx = adjustBitSize(20800, mask);
@@ -481,7 +521,7 @@ void testProcessRxPacketWithoutPayload() {
   xTaskGetTickCount_IgnoreAndReturn(tickCount);
 
   // Test
-  processRxPacket(NULL, localId, &rxPacket, antennaDelay, neighbourStorage, tofStorage);
+  processRxPacket(NULL, localId, &rxPacket, antennaDelay, &isBuildingCoordinateSystem, neighbourStorage, tofStorage);
 
   // Verify result
   neighbourData_t* currentNeighbourData = findNeighbourData(neighbourStorage, remoteId, false);
@@ -497,8 +537,6 @@ void testProcessRxPacketWithoutPayload() {
   // TEST_ASSERT_EQUAL_FLOAT(0, currentNeighbourData->position.z);
 }
 
-/* TESTS THAT REQUIRE UPDATE */
-/*
 void testupdatePositionOfFirstDrone() {
   locoId_t remoteId = 5;
   locoId_t dutId = 6;
