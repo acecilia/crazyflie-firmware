@@ -43,7 +43,7 @@ typedef struct {
   lpsSwarmPacketHeader_t header;
 
   // The payload, which maximum size in bytes is specified
-  payload_t payload[128 / sizeof(payload_t)]; // TODO: see what is really the limit
+  payload_t payload[(127 - sizeof(lpsSwarmPacketHeader_t)) / sizeof(payload_t)]; // TODO: see what is really the limit
 } __attribute__((packed)) lpsSwarmPacket_t;
 
 /**
