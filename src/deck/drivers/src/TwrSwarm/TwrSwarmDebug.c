@@ -99,7 +99,7 @@ uint16_t lastKnownSuccededTofCalculationPerSec = 0;
 static xTimerHandle logTimer;
 static void logTimerCallback(xTimerHandle timer) {
   lastKnownSentPacketsPerSec = debug.sentPacketsPerSec;
-  lastKnownExpectedReceivedPacketsPerSec = debug.receivedPacketsPerSec * debug.neighbourCount;
+  lastKnownExpectedReceivedPacketsPerSec = debug.sentPacketsPerSec * debug.neighbourCount;
   lastKnownReceivedPacketsPerSec = debug.receivedPacketsPerSec;
   lastKnownSuccededTofCalculationPerSec = debug.succededTofCalculationPerSec;
 
