@@ -36,8 +36,8 @@ static uint16_t minStack = INT16_MAX;
 void twrSwarmDumpInit() {
   ASSERT(!initialized);
 
-  xTimerHandle timer = xTimerCreate( "twrSwarmDumpTimer", M2T(1000), pdTRUE, NULL, timerHandler);
-  xTimerStart(timer, 1000);
+  xTimerHandle timer = xTimerCreate( "twrSwarmDumpTimer", M2T(500), pdTRUE, NULL, timerHandler);
+  xTimerStart(timer, 0);
 
   initialized = true;
 }
