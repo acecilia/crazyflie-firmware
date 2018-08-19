@@ -30,6 +30,7 @@ typedef struct {
 
   uint16_t totalRangingPerSec;
   uint16_t succededRangingPerSec;
+  uint16_t succededTofCalculationPerSec;
 
   uint32_t auxiliaryValue;
   

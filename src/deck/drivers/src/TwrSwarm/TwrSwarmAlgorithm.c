@@ -82,6 +82,8 @@ static void init(dwDevice_t *dev) {
 
   ctx.localId = generateId();
   DEBUG_PRINT("Swarm Id: %d\n", ctx.localId);
+  DEBUG_PRINT("Neighbour data size: %d\n", sizeof(neighbourData_t));
+  DEBUG_PRINT("Tof data size: %d\n", sizeof(tofData_t));
 
   ctx.nextTxSeqNr = 0;
 
@@ -101,10 +103,6 @@ static void init(dwDevice_t *dev) {
  Fill and transmit a packet
  */
 static void transmit(dwDevice_t *dev) {
-#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-  debug.totalRangingPerSec++;
-#endif
-
   lpsSwarmPacket_t* txPacket = &packet;
   txPacket->header.type = PACKET_TYPE_SWARM;
 

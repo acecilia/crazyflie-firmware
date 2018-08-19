@@ -39,6 +39,8 @@ debug_t debug = {
 
   .totalRangingPerSec = 6000,
   .succededRangingPerSec = 7000,
+  .succededTofCalculationPerSec = 7100,
+
 
   .auxiliaryValue = 8000, // To log something fast without the need of created the necessary logging code for it
 
@@ -91,14 +93,17 @@ static void blink(led_t led) {
 // Ranging measurement tools
 uint16_t lastKnownTotalRangingPerSec = 0;
 uint16_t lastKnownSuccededRangingPerSec = 0;
+uint16_t lastKnownSuccededTofCalculationPerSec = 0;
 
 // Timer debug tools
 static xTimerHandle logTimer;
 static void logTimerCallback(xTimerHandle timer) {
   lastKnownTotalRangingPerSec = debug.totalRangingPerSec;
   lastKnownSuccededRangingPerSec = debug.succededRangingPerSec;
+  lastKnownSuccededTofCalculationPerSec = debug.succededTofCalculationPerSec;
   debug.totalRangingPerSec = 0;
   debug.succededRangingPerSec = 0;
+  debug.succededTofCalculationPerSec = 0;
 
   debug.clockAcceptanceRate = (debug.clockUpdated - debug.clockNotAccepted) * 100 / debug.clockUpdated;
   debug.clockUpdated = 0;
@@ -144,6 +149,7 @@ LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
 
 LOG_ADD(LOG_UINT16, rangingPerSec, &lastKnownTotalRangingPerSec)
 LOG_ADD(LOG_UINT16, okRangingPerSec, &lastKnownSuccededRangingPerSec)
+LOG_ADD(LOG_UINT16, okTofPerSec, &lastKnownSuccededTofCalculationPerSec)
 
 LOG_ADD(LOG_UINT32, auxiliaryValue, &debug.auxiliaryValue)
 

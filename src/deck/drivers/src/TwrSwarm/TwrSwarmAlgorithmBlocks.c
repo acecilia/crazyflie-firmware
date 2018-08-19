@@ -337,6 +337,10 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeq
   }
 
   txPacket->header.payloadLength = payloadLength;
+
+#ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+  debug.totalRangingPerSec++;
+#endif
 }
 
 void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, const uint16_t antennaDelay, bool* isBuildingCoordinateSystem, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
@@ -413,6 +417,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
         debug.tof = tofData->tof;
         debug.distance = tofData->tof * TOF_TO_DISTANCE;
+        debug.succededTofCalculationPerSec++;
 #endif
       }
 

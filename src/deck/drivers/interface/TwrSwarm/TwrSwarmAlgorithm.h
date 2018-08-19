@@ -10,8 +10,8 @@ typedef uint8_t locoId_t;
 typedef uint16_t locoIdx2_t;
 typedef uint32_t packetTimestamp_t;
 
-#define NEIGHBOUR_STORAGE_CAPACITY 16
-#define TOF_STORAGE_CAPACITY (NEIGHBOUR_STORAGE_CAPACITY*(NEIGHBOUR_STORAGE_CAPACITY - 1) / 2)
+#define NEIGHBOUR_STORAGE_CAPACITY 16 // sizeof(neighbourData_t) == 488 bytes => 72 maximum
+#define TOF_STORAGE_CAPACITY (NEIGHBOUR_STORAGE_CAPACITY*(NEIGHBOUR_STORAGE_CAPACITY - 1) / 2) // sizeof(tofData_t) == 6 bytes
 
 /**
  A type that relates the id of a drone with some associated information
