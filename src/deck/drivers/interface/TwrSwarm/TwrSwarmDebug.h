@@ -26,10 +26,10 @@ typedef struct {
   uint32_t tof;
   float distance;
 
-  uint32_t dctCount;
+  uint32_t neighbourCount;
 
-  uint16_t totalRangingPerSec;
-  uint16_t succededRangingPerSec;
+  uint16_t sentPacketsPerSec;
+  uint16_t receivedPacketsPerSec;
   uint16_t succededTofCalculationPerSec;
 
   uint32_t auxiliaryValue;

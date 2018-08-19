@@ -35,12 +35,11 @@ debug_t debug = {
   .tof = 4000,
   .distance = 4100,
 
-  .dctCount = 5000,
+  .neighbourCount = 5000,
 
-  .totalRangingPerSec = 6000,
-  .succededRangingPerSec = 7000,
-  .succededTofCalculationPerSec = 7100,
-
+  .sentPacketsPerSec = 6000,
+  .receivedPacketsPerSec = 6200,
+  .succededTofCalculationPerSec = 6300,
 
   .auxiliaryValue = 8000, // To log something fast without the need of created the necessary logging code for it
 
@@ -91,18 +90,21 @@ static void blink(led_t led) {
 }
 
 // Ranging measurement tools
-uint16_t lastKnownTotalRangingPerSec = 0;
-uint16_t lastKnownSuccededRangingPerSec = 0;
+uint16_t lastKnownSentPacketsPerSec = 0;
+uint16_t lastKnownExpectedReceivedPacketsPerSec = 0;
+uint16_t lastKnownReceivedPacketsPerSec  = 0;
 uint16_t lastKnownSuccededTofCalculationPerSec = 0;
 
 // Timer debug tools
 static xTimerHandle logTimer;
 static void logTimerCallback(xTimerHandle timer) {
-  lastKnownTotalRangingPerSec = debug.totalRangingPerSec;
-  lastKnownSuccededRangingPerSec = debug.succededRangingPerSec;
+  lastKnownSentPacketsPerSec = debug.sentPacketsPerSec;
+  lastKnownExpectedReceivedPacketsPerSec = debug.receivedPacketsPerSec * debug.neighbourCount;
+  lastKnownReceivedPacketsPerSec = debug.receivedPacketsPerSec;
   lastKnownSuccededTofCalculationPerSec = debug.succededTofCalculationPerSec;
-  debug.totalRangingPerSec = 0;
-  debug.succededRangingPerSec = 0;
+
+  debug.sentPacketsPerSec = 0;
+  debug.receivedPacketsPerSec = 0;
   debug.succededTofCalculationPerSec = 0;
 
   debug.clockAcceptanceRate = (debug.clockUpdated - debug.clockNotAccepted) * 100 / debug.clockUpdated;
@@ -145,10 +147,11 @@ LOG_ADD(LOG_UINT32, clockAcceptance, &debug.clockAcceptanceRate)
 LOG_ADD(LOG_UINT32, tof, &debug.tof)
 LOG_ADD(LOG_FLOAT, distance, &debug.distance)
 
-LOG_ADD(LOG_UINT32, dctCount, &debug.dctCount)
+LOG_ADD(LOG_UINT32, neighbourCount, &debug.neighbourCount)
 
-LOG_ADD(LOG_UINT16, rangingPerSec, &lastKnownTotalRangingPerSec)
-LOG_ADD(LOG_UINT16, okRangingPerSec, &lastKnownSuccededRangingPerSec)
+LOG_ADD(LOG_UINT16, txPerSec, &lastKnownSentPacketsPerSec)
+LOG_ADD(LOG_UINT16, expectedRxPerSec, &lastKnownExpectedReceivedPacketsPerSec)
+LOG_ADD(LOG_UINT16, rxPerSec, &lastKnownReceivedPacketsPerSec)
 LOG_ADD(LOG_UINT16, okTofPerSec, &lastKnownSuccededTofCalculationPerSec)
 
 LOG_ADD(LOG_UINT32, auxiliaryValue, &debug.auxiliaryValue)

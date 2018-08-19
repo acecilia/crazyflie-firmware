@@ -339,7 +339,7 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeq
   txPacket->header.payloadLength = payloadLength;
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-  debug.totalRangingPerSec++;
+  debug.sentPacketsPerSec++;
 #endif
 }
 
@@ -389,9 +389,9 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       // TODO: acecilia. See what can we use the transmitted tof for
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
-      debug.succededRangingPerSec++;
+      debug.receivedPacketsPerSec++;
 #endif
-
+      
       // Timestamp remote values
       const packetTimestamp_t remoteRx = rxPacket->payload[i].rx;
 
@@ -454,7 +454,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   debug.clockCorrectionCandidate = (uint32_t)(clockCorrectionCandidate * 1000000000);
   debug.clockCorrection = (uint32_t)(clockCorrection * 1000000000);
 
-  debug.dctCount = countNeighbours(neighboursStorage);
+  debug.neighbourCount = countNeighbours(neighboursStorage);
 #endif
 
   // Save the remoteTx, so we can use it to calculate the clockCorrection
