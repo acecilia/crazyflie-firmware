@@ -62,6 +62,17 @@ static void timerCallback(xTimerHandle timer) {
 
   DEBUG_PRINT("N: %d\n", countNeighbours(ctx.neighboursStorage));
   DEBUG_PRINT("Tof: %d\n", countTof(ctx.tofStorage));
+
+  for(unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
+    if(ctx.neighboursStorage[i].isInitialized) {
+      DEBUG_PRINT("yes");
+    } else {
+      DEBUG_PRINT("no");
+    }
+    DEBUG_PRINT(" | ");
+  }
+  DEBUG_PRINT("\n");
+
 }
 
 /**

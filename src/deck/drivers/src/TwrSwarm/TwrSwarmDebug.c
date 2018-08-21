@@ -12,9 +12,23 @@ static void init();
 debug_t debug = {
   .position = {
     .timestamp = 0,
-    .x = 0,
-    .y = 0,
-    .z = 0
+    .x = 0.1,
+    .y = 0.2,
+    .z = 0.3
+  },
+
+  .position0 = {
+    .timestamp = 0,
+    .x = 0.4,
+    .y = 0.5,
+    .z = 0.6
+  },
+
+  .position1 = {
+    .timestamp = 0,
+    .x = 0.7,
+    .y = 0.8,
+    .z = 0.9
   },
 
   .localRx = 100,
@@ -130,6 +144,14 @@ LOG_GROUP_START(twrSwarm)
 LOG_ADD(LOG_FLOAT, xPosition, &debug.position.x)
 LOG_ADD(LOG_FLOAT, yPosition, &debug.position.y)
 LOG_ADD(LOG_FLOAT, zPosition, &debug.position.z)
+
+LOG_ADD(LOG_FLOAT, xPosition0, &debug.position0.x)
+LOG_ADD(LOG_FLOAT, yPosition0, &debug.position0.y)
+LOG_ADD(LOG_FLOAT, zPosition0, &debug.position0.z)
+
+LOG_ADD(LOG_FLOAT, xPosition1, &debug.position1.x)
+LOG_ADD(LOG_FLOAT, yPosition1, &debug.position1.y)
+LOG_ADD(LOG_FLOAT, zPosition1, &debug.position1.z)
 
 LOG_ADD(LOG_FLOAT, localRx, &debug.localRx)
 LOG_ADD(LOG_FLOAT, localTx, &debug.localTx)

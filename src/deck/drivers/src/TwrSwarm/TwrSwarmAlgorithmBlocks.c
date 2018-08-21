@@ -477,19 +477,20 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   }
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
+  estimatorKalmanGetEstimatedPos(&debug.position);
+
+  if(neighboursStorage[0].estimator.isInit) {
+    estimatorKalmanEngine.getPosition(&neighboursStorage[0].estimator, &debug.position0);
+  }
+
+  if(neighboursStorage[1].estimator.isInit) {
+    estimatorKalmanEngine.getPosition(&neighboursStorage[1].estimator, &debug.position1);
+  }
+
   if(neighbourData->estimator.isInit) {
     point_t pos;
     estimatorKalmanEngine.getPosition(&neighbourData->estimator, &pos);
     debug.localRx = pos.x;
-  }
-
-  neighbourData_t* droneData = &neighboursStorage[debug.drone];
-  if(droneData != NULL && droneData->estimator.isInit) {
-    estimatorKalmanEngine.getPosition(&droneData->estimator, &debug.position);
-  } else {
-    debug.position.x = 1;
-    debug.position.y = 2;
-    debug.position.z = 3;
   }
 #endif
 }

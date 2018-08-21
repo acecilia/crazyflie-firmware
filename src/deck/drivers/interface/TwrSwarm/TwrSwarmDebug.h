@@ -7,6 +7,8 @@
 
 typedef struct {
   point_t position;
+  point_t position0;
+  point_t position1;
 
   float localRx;
   float localTx;
