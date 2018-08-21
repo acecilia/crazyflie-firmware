@@ -410,7 +410,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
 
       // Store tof. Reject outliers
       // acecilia. TODO: use leaky bucket?
-      if(tof < 2000) {
+      if(tof < 2131) { // 2131 = 10 meters
         tofData_t* tofData = findTofData(tofStorage, localId, remoteId, true);
         tofData->tof = tof;
 
