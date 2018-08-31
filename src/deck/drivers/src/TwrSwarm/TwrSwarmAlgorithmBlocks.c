@@ -68,6 +68,8 @@ uint64_t createMask(const uint8_t numberOfOnes) {
 
 #define AVERAGE_TX_FREQ 400
 #define MAX_TX_FREQ 100 // Maximum tx frequency (we do not need more for a proper ranging)
+#define MIN_TX_FREQ 20 // The TX timestamp in the protocol is only 32 bits (equal to 67 ms) and we want to avoid double wraps of the TX counter. To have some margin set the lowest tx frequency to 20 Hz (= 50 ms)
+
 static uint32_t ticksPerSecond = M2T(1000);
 
 /**********************************/
@@ -160,6 +162,8 @@ uint32_t calculateAverageTxDelay(neighbourData_t neighboursStorage[]) {
 
   if (freq > MAX_TX_FREQ) {
     freq = MAX_TX_FREQ;
+  } else if (freq < MIN_TX_FREQ) {
+    freq = MIN_TX_FREQ;
   }
 
   return ticksPerSecond / freq;
