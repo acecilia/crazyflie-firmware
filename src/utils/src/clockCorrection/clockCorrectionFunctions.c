@@ -1,6 +1,6 @@
 #include "clockCorrectionFunctions.h"
 
-#define MAX_CLOCK_DEVIATION_SPEC 10e-6
+#define MAX_CLOCK_DEVIATION_SPEC 2 * 10e-6
 #define CLOCK_CORRECTION_SPEC_MIN (1.0 - MAX_CLOCK_DEVIATION_SPEC * 2)
 #define CLOCK_CORRECTION_SPEC_MAX (1.0 + MAX_CLOCK_DEVIATION_SPEC * 2)
 
@@ -22,7 +22,7 @@ static float logClockCorrection = 0;
 static float logClockCorrectionCandidate = 0;
 
 static float scaleValueForLogging(double value) {
-  return (float)((value - 1) * (1 / MAX_CLOCK_DEVIATION_SPEC) * 1000);
+  return (float)((value - 1) * 1000000000);
 }
 #endif
 

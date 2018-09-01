@@ -95,6 +95,11 @@ static void init(dwDevice_t *dev) {
   DEBUG_PRINT("Swarm Id: %d\n", ctx.localId);
   DEBUG_PRINT("Neighbour data size: %d\n", sizeof(neighbourData_t));
   DEBUG_PRINT("Tof data size: %d\n", sizeof(tofData_t));
+  DEBUG_PRINT("Context size: %d\n", sizeof(ctx));
+  DEBUG_PRINT("Kalman storage size: %d\n", sizeof(estimatorKalmanStorage_t));
+  DEBUG_PRINT("Packet header size: %d\n", sizeof(lpsSwarmPacketHeader_t));
+  DEBUG_PRINT("Packet payload size: %d\n", sizeof(payload_t));
+  DEBUG_PRINT("Packet size: %d\n", sizeof(lpsSwarmPacket_t));
 
   ctx.nextTxSeqNr = 0;
 
