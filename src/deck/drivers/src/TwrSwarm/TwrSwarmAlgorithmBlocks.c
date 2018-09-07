@@ -529,9 +529,9 @@ void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinate
      */
 
     // In Meters
-    float positionStdDev = 0.5;
+    float positionStdDev = 1;
     const vec3Measurement_t initialPosition = {
-      // We give an initial value of (10, 10, 10) instead of (0, 0, 0) in order to make sure that, from the possible trilateration solutions, the system chooses the one in the positive axis
+      // We give an initial value of (10, 10, 10) instead of (0, 0, 0) in order to make sure that, from the possible trilateration solutions, the system chooses the one in the positive axis. Also, the stdDev is not so high for the same pourpose
       .value = { .x = 10, .y = 10, .z = 10 },
       .stdDev = { .x = positionStdDev, .y = positionStdDev, .z = positionStdDev }
     };
