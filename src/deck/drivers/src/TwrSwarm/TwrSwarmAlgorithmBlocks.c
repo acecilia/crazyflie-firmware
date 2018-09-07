@@ -520,7 +520,8 @@ void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinate
     // In Meters
     float positionStdDev = estimatorKalmanEngine.maximumAbsolutePosition;
     const vec3Measurement_t initialPosition = {
-      .value = { .x = 0, .y = 0, .z = 0 },
+      // We give an initial value of (1, 1, 1) instead of (0, 0, 0) in order to make sure that, from the possible trilateration solutions, the system chooses the one in the positive axis
+      .value = { .x = 1, .y = 1, .z = 1 },
       .stdDev = { .x = positionStdDev, .y = positionStdDev, .z = positionStdDev }
     };
     // In m/s
