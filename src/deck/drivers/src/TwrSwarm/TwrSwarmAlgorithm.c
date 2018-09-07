@@ -60,7 +60,7 @@ static void timerCallback(xTimerHandle timer) {
 
   removeOutdatedData(ctx.neighboursStorage, ctx.tofStorage);
 
-  DEBUG_PRINT("N: %d\n", countNeighbours(ctx.neighboursStorage));
+  /*DEBUG_PRINT("N: %d\n", countNeighbours(ctx.neighboursStorage));
   DEBUG_PRINT("Tof: %d\n", countTof(ctx.tofStorage));
 
   for(unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
@@ -71,7 +71,7 @@ static void timerCallback(xTimerHandle timer) {
     }
     DEBUG_PRINT(" | ");
   }
-  DEBUG_PRINT("\n");
+  DEBUG_PRINT("\n");*/
 
 }
 

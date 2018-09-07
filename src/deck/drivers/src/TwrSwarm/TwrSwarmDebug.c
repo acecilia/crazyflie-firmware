@@ -130,7 +130,7 @@ static void init() {
   logTimer = xTimerCreate("loggingTimer", M2T(1000), pdTRUE, NULL, logTimerCallback);
   xTimerStart(logTimer, 0);
 
-  twrSwarmDumpInit();
+  // twrSwarmDumpInit();
 }
 
 // Stock log groups
