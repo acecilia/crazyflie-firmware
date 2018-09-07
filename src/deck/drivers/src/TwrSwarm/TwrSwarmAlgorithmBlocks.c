@@ -491,6 +491,10 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
     estimatorKalmanEngine.getPosition(&neighboursStorage[1].estimator, &debug.position1);
   }
 
+  if(neighboursStorage[2].estimator.isInit) {
+    estimatorKalmanEngine.getPosition(&neighboursStorage[2].estimator, &debug.position2);
+  }
+
   if(neighbourData->estimator.isInit) {
     point_t pos;
     estimatorKalmanEngine.getPosition(&neighbourData->estimator, &pos);

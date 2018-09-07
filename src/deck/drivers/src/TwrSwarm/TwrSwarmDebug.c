@@ -31,6 +31,13 @@ debug_t debug = {
     .z = 0.9
   },
 
+  .position2 = {
+      .timestamp = 0,
+      .x = 1,
+      .y = 1.1,
+      .z = 1.2
+  },
+
   .localRx = 100,
   .localTx = 200,
   .remoteRx = 300,
@@ -133,13 +140,6 @@ static void init() {
   // twrSwarmDumpInit();
 }
 
-// Stock log groups
-LOG_GROUP_START(kalman)
-LOG_ADD(LOG_FLOAT, stateX, &debug.position.x)
-LOG_ADD(LOG_FLOAT, stateY, &debug.position.y)
-LOG_ADD(LOG_FLOAT, stateZ, &debug.position.z)
-LOG_GROUP_STOP(kalman)
-
 LOG_GROUP_START(twrSwarm)
 LOG_ADD(LOG_FLOAT, xPosition, &debug.position.x)
 LOG_ADD(LOG_FLOAT, yPosition, &debug.position.y)
@@ -152,6 +152,10 @@ LOG_ADD(LOG_FLOAT, zPosition0, &debug.position0.z)
 LOG_ADD(LOG_FLOAT, xPosition1, &debug.position1.x)
 LOG_ADD(LOG_FLOAT, yPosition1, &debug.position1.y)
 LOG_ADD(LOG_FLOAT, zPosition1, &debug.position1.z)
+
+LOG_ADD(LOG_FLOAT, xPosition2, &debug.position2.x)
+LOG_ADD(LOG_FLOAT, yPosition2, &debug.position2.y)
+LOG_ADD(LOG_FLOAT, zPosition2, &debug.position2.z)
 
 LOG_ADD(LOG_FLOAT, localRx, &debug.localRx)
 LOG_ADD(LOG_FLOAT, localTx, &debug.localTx)
