@@ -270,19 +270,23 @@ tofData_t* findTofData(tofData_t storage[], const locoId_t id1, const locoId_t i
 
 void removeOutdatedData(neighbourData_t neighbourDataStorage[], tofData_t tofDataStorage[]) {
   for(unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
-    if (neighbourDataStorage[i].isInitialized && !neighbourDataStorage[i].IsValid) {
+    neighbourData_t* neighbourData = &neighbourDataStorage[i];
+
+    if (neighbourData->isInitialized && !neighbourData->IsValid) {
       // Remove the tof associated with the neighbour
-      for(unsigned int i = 0; i < TOF_STORAGE_CAPACITY; i++) {
-        if (hashContainsId(tofDataStorage[i].id, neighbourDataStorage[i].id)){
-          memset(&tofDataStorage[i], 0, sizeof(tofData_t));
+      for(unsigned int e = 0; e < TOF_STORAGE_CAPACITY; e++) {
+        tofData_t* tofData = &tofDataStorage[e];
+        locoIdx2_t hash = tofData->id;
+        if (hashContainsId(hash, neighbourData->id)){
+          memset(tofData, 0, sizeof(tofData_t));
         }
       }
 
       // Remove the neighbour
-      memset(&neighbourDataStorage[i], 0, sizeof(neighbourData_t));
-    } else {
-      neighbourDataStorage[i].IsValid = false;
+      memset(neighbourData, 0, sizeof(neighbourData_t));
     }
+
+    neighbourData->IsValid = false;
   }
 }
 
@@ -349,8 +353,8 @@ void setTxData(lpsSwarmPacket_t* txPacket, locoId_t sourceId, uint8_t* nextTxSeq
 
 void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* rxPacket, const uint16_t antennaDelay, bool* isBuildingCoordinateSystem, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
   // Get neighbour data
-  locoId_t remoteId = rxPacket->header.sourceId;
-  neighbourData_t* neighbourData = findNeighbourData(neighboursStorage, remoteId, true);
+  locoId_t neighbourId = rxPacket->header.sourceId;
+  neighbourData_t* neighbourData = findNeighbourData(neighboursStorage, neighbourId, true);
   neighbourData->IsValid = true;
 
   // Check sequence number
@@ -415,7 +419,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       // Store tof. Reject outliers
       // acecilia. TODO: use leaky bucket?
       if(tof < 2131) { // 2131 = 10 meters
-        tofData_t* tofData = findTofData(tofStorage, localId, remoteId, true);
+        tofData_t* tofData = findTofData(tofStorage, localId, neighbourId, true);
         tofData->tof = tof;
 
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
@@ -449,8 +453,13 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
       debug.remoteReply = remoteReply;
 #endif
     } else {
-      tofData_t* tofData = findTofData(tofStorage, remoteId, rxPacket->payload[i].id, true);
-      tofData->tof = (uint16_t)(rxPacket->payload[i].tof * clockCorrection);
+      // In order to accept the tof between the neighbour and a remoteNeighbour, both quadcopters should be known: they should be in the neighbour storage. The neighbour sending the packet is already in the storage, so the remoteNeighbour is the one left to check
+      // NOTE: without this check, removing the outdated data of a quadcopter will not fully work: after removal, it may happen that a tof involving that quadcopter arrives, and without this check it will be saved to the tofStorage and live there "forever"
+      locoId_t remoteNeighbourId = rxPacket->payload[i].id;
+      if(findNeighbourData(neighboursStorage, remoteNeighbourId, false) != NULL) {
+        tofData_t* tofData = findTofData(tofStorage, neighbourId, remoteNeighbourId, true);
+        tofData->tof = (uint16_t)(rxPacket->payload[i].tof * clockCorrection);
+      }
     }
   }
 
@@ -467,7 +476,7 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
   neighbourData->localRx = localRx;
 
   updatePositionOf(neighbourData, isBuildingCoordinateSystem, neighboursStorage, tofStorage);
-  updateOwnPosition(localId, remoteId, neighbourData, tofStorage);
+  updateOwnPosition(localId, neighbourId, neighbourData, tofStorage);
 
   // HACK for simulating 2D
   unsigned int neighbours = countNeighbours(neighboursStorage);
