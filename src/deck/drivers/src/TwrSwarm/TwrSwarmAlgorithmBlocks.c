@@ -517,7 +517,9 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
  The standard deviation of a tof measurement. The value passed here (10) was obtained experimentally
  EDIT: the value is not anymore the standard deviation, but a random value obtained experimentally -- why?!
  */
-#define DISTANCE_STD_DEV 0.25 // 10 * TOF_TO_DISTANCE
+#define OWN_STD_DEV 0.25
+#define NEIGHBOURS_STD_DEV 0.25
+#define STD_DEV_STABLE_THRESHOLD 0.1
 
 void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinateSystem, neighbourData_t neighboursStorage[], tofData_t tofStorage[]) {
   // Give the initial state of the drone if needed
@@ -527,10 +529,10 @@ void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinate
      */
 
     // In Meters
-    float positionStdDev = estimatorKalmanEngine.maximumAbsolutePosition;
+    float positionStdDev = 0.5;
     const vec3Measurement_t initialPosition = {
-      // We give an initial value of (1, 1, 1) instead of (0, 0, 0) in order to make sure that, from the possible trilateration solutions, the system chooses the one in the positive axis
-      .value = { .x = 1, .y = 1, .z = 1 },
+      // We give an initial value of (10, 10, 10) instead of (0, 0, 0) in order to make sure that, from the possible trilateration solutions, the system chooses the one in the positive axis
+      .value = { .x = 10, .y = 10, .z = 10 },
       .stdDev = { .x = positionStdDev, .y = positionStdDev, .z = positionStdDev }
     };
     // In m/s
@@ -580,10 +582,10 @@ void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinate
 
         if (tofData != NULL) {
           estimatorKalmanStorage_t* estimator = &neighboursStorage[i].estimator;
-          bool isInit = estimator->isInit;
-          bool positionIsStable = estimatorKalmanEngine.isPositionStable(estimator, DISTANCE_STD_DEV);
+          bool estimatorIsInit = estimator->isInit;
+          bool positionIsStable = estimatorKalmanEngine.isPositionStable(estimator, STD_DEV_STABLE_THRESHOLD);
 
-          if(isInit && positionIsStable) {
+          if(estimatorIsInit && positionIsStable) {
             // Run update without new data, to get the most updated position (basically just run the prediction)
             // estimatorKalmanEngine.update(estimator);
 
@@ -594,7 +596,7 @@ void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinate
             distances[distancesIndex].y = positionData.y;
             distances[distancesIndex].z = positionData.z;
             distances[distancesIndex].distance = tofData->tof * TOF_TO_DISTANCE;
-            distances[distancesIndex].stdDev = DISTANCE_STD_DEV;
+            distances[distancesIndex].stdDev = NEIGHBOURS_STD_DEV;
             distancesIndex++;
           }
         }
@@ -612,7 +614,10 @@ void updatePositionOf(neighbourData_t* neighbourData, bool* isBuildingCoordinate
 }
 
 void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* neighbourData, tofData_t tofStorage[]) {
-  if(neighbourData->estimator.isInit) {
+  bool estimatorIsInit = neighbourData->estimator.isInit;
+  bool positionIsStable = estimatorKalmanEngine.isPositionStable(&neighbourData->estimator, STD_DEV_STABLE_THRESHOLD);
+
+  if(estimatorIsInit && positionIsStable) {
     point_t remotePosition;
     estimatorKalmanEngine.getPosition(&neighbourData->estimator, &remotePosition);
 
@@ -623,7 +628,7 @@ void updateOwnPosition(locoId_t localId, locoId_t remoteId, neighbourData_t* nei
         .x = remotePosition.x,
         .y = remotePosition.y,
         .z = remotePosition.z,
-        .stdDev = 0.25
+        .stdDev = OWN_STD_DEV
       };
       estimatorKalmanEnqueueDistance(&dist);
     }

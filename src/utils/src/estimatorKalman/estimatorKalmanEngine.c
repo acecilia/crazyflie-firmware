@@ -919,6 +919,7 @@ static void update(estimatorKalmanStorage_t* storage, bool performPrediction) {
  */
 
 static bool isPositionStable(const estimatorKalmanStorage_t* storage, const float maxStdDev) {
+  // DEBUG_PRINT("%f, %f, %f\n", (double)storage->P[STATE_X][STATE_X], (double)storage->P[STATE_Y][STATE_Y], (double)storage->P[STATE_Z][STATE_Z]);
   return storage->P[STATE_X][STATE_X] < maxStdDev
       && storage->P[STATE_Y][STATE_Y] < maxStdDev
       && storage->P[STATE_Z][STATE_Z] < maxStdDev;
