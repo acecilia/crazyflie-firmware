@@ -8,6 +8,7 @@
 
 static void blink(led_t led);
 static void init();
+static void sendNeighbourPosition(point_t position, uint8_t id);
 
 debug_t debug = {
   .position = {
@@ -16,27 +17,14 @@ debug_t debug = {
     .y = 0.2,
     .z = 0.3
   },
-
-  .position0 = {
+  .neighbourPositionId = 0,
+  .neighbourPosition = {
     .timestamp = 0,
     .x = 0.4,
     .y = 0.5,
     .z = 0.6
   },
-
-  .position1 = {
-    .timestamp = 0,
-    .x = 0.7,
-    .y = 0.8,
-    .z = 0.9
-  },
-
-  .position2 = {
-      .timestamp = 0,
-      .x = 1,
-      .y = 1.1,
-      .z = 1.2
-  },
+  .sendNeighbourPosition = sendNeighbourPosition,
 
   .localRx = 100,
   .localTx = 200,
@@ -80,6 +68,11 @@ static unsigned int GREEN_L_counter = 0;
 static unsigned int RED_L_counter = 0;
 static unsigned int GREEN_R_counter = 0;
 static unsigned int RED_R_counter = 0;
+
+static void sendNeighbourPosition(point_t position, uint8_t id) {
+  debug.neighbourPositionId = id;
+  debug.neighbourPosition = position;
+}
 
 static void blink(led_t led) {
   unsigned int* blinkCounter = NULL;
@@ -145,17 +138,10 @@ LOG_ADD(LOG_FLOAT, xPosition, &debug.position.x)
 LOG_ADD(LOG_FLOAT, yPosition, &debug.position.y)
 LOG_ADD(LOG_FLOAT, zPosition, &debug.position.z)
 
-LOG_ADD(LOG_FLOAT, xPosition0, &debug.position0.x)
-LOG_ADD(LOG_FLOAT, yPosition0, &debug.position0.y)
-LOG_ADD(LOG_FLOAT, zPosition0, &debug.position0.z)
-
-LOG_ADD(LOG_FLOAT, xPosition1, &debug.position1.x)
-LOG_ADD(LOG_FLOAT, yPosition1, &debug.position1.y)
-LOG_ADD(LOG_FLOAT, zPosition1, &debug.position1.z)
-
-LOG_ADD(LOG_FLOAT, xPosition2, &debug.position2.x)
-LOG_ADD(LOG_FLOAT, yPosition2, &debug.position2.y)
-LOG_ADD(LOG_FLOAT, zPosition2, &debug.position2.z)
+LOG_ADD(LOG_UINT8, iPositionN, &debug.neighbourPositionId)
+LOG_ADD(LOG_FLOAT, xPositionN, &debug.neighbourPosition.x)
+LOG_ADD(LOG_FLOAT, yPositionN, &debug.neighbourPosition.y)
+LOG_ADD(LOG_FLOAT, zPositionN, &debug.neighbourPosition.z)
 
 LOG_ADD(LOG_FLOAT, localRx, &debug.localRx)
 LOG_ADD(LOG_FLOAT, localTx, &debug.localTx)

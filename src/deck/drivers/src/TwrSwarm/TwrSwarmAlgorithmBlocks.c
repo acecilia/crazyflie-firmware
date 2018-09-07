@@ -480,19 +480,20 @@ void processRxPacket(dwDevice_t *dev, locoId_t localId, const lpsSwarmPacket_t* 
     estimatorKalmanEnqueueTOF(&tofData);
   }
 
+
+
 #ifdef LPS_TWR_SWARM_DEBUG_ENABLE
   estimatorKalmanGetEstimatedPos(&debug.position);
 
-  if(neighboursStorage[0].estimator.isInit) {
-    estimatorKalmanEngine.getPosition(&neighboursStorage[0].estimator, &debug.position0);
-  }
-
-  if(neighboursStorage[1].estimator.isInit) {
-    estimatorKalmanEngine.getPosition(&neighboursStorage[1].estimator, &debug.position1);
-  }
-
-  if(neighboursStorage[2].estimator.isInit) {
-    estimatorKalmanEngine.getPosition(&neighboursStorage[2].estimator, &debug.position2);
+  for(uint8_t i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
+    neighbourData_t* storage = &neighboursStorage[i];
+    if(storage->id == neighbourData->id) {
+      if(neighbourData->estimator.isInit) {
+        point_t pos;
+        estimatorKalmanEngine.getPosition(&neighbourData->estimator, &pos);
+        debug.sendNeighbourPosition(pos, i);
+      }
+    }
   }
 
   if(neighbourData->estimator.isInit) {

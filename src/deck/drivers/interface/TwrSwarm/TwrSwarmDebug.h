@@ -7,9 +7,9 @@
 
 typedef struct {
   point_t position;
-  point_t position0;
-  point_t position1;
-  point_t position2;
+  uint8_t neighbourPositionId;
+  point_t neighbourPosition;
+  void (*sendNeighbourPosition)(point_t position, uint8_t id);
 
   float localRx;
   float localTx;
