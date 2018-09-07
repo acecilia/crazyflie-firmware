@@ -708,7 +708,7 @@ static void updateWithDistance(estimatorKalmanStorage_t* storage, distanceMeasur
     h[STATE_Y] = dy/predictedDistance;
     h[STATE_Z] = dz/predictedDistance;
   } else {
-    // This means that the actual position of the copter and the meassure position are the same. Because of that, we do not know the direction of the update, so h should have the same value for [STATE_X], h[STATE_Y] and h[STATE_Z]
+    // This means that the actual position of the copter and the meassured reference position are the same. Because of that, we do not know the direction of the update, so h should have the same value for [STATE_X], h[STATE_Y] and h[STATE_Z]
     predictedDistance = 0;
     float hValue = 1.0f / sqrtf(3.0f); // Module of h should be 1
     h[STATE_X] = hValue;

@@ -764,7 +764,9 @@ static void stateEstimatorPredict(float cmdThrust, Axis3f *acc, Axis3f *gyro, fl
   float dtwz = dt*gyro->z;
 
   // compute the quaternion values in [w,x,y,z] order
-  float angle = arm_sqrt(dtwx*dtwx + dtwy*dtwy + dtwz*dtwz);
+  float tmpValue = dtwx*dtwx + dtwy*dtwy + dtwz*dtwz;
+  ASSERT(tmpValue > 0);
+  float angle = arm_sqrt(tmpValue);
   float ca = arm_cos_f32(angle/2.0f);
   float sa = arm_sin_f32(angle/2.0f);
   float dq[4] = {ca , sa*dtwx/angle , sa*dtwy/angle , sa*dtwz/angle};
@@ -971,14 +973,24 @@ static void stateEstimatorUpdateWithDistance(distanceMeasurement_t *d)
   float dy = S[STATE_Y] - d->y;
   float dz = S[STATE_Z] - d->z;
 
-  float predictedDistance = arm_sqrt(powf(dx, 2) + powf(dy, 2) + powf(dz, 2));
+  float predictedDistance;
+  if(dx != 0 || dy != 0 || dz != 0) {
+    predictedDistance = arm_sqrt(powf(dx, 2) + powf(dy, 2) + powf(dz, 2));
+
+    // The measurement is: z = sqrt(dx^2 + dy^2 + dz^2). The derivative dz/dX gives h.
+    h[STATE_X] = dx/predictedDistance;
+    h[STATE_Y] = dy/predictedDistance;
+    h[STATE_Z] = dz/predictedDistance;
+  } else {
+    // This means that the actual position of the copter and the meassured reference position are the same. Because of that, we do not know the direction of the update, so h should have the same value for [STATE_X], h[STATE_Y] and h[STATE_Z]
+    predictedDistance = 0;
+    float hValue = 1.0f / sqrtf(3.0f); // Module of h should be 1
+    h[STATE_X] = hValue;
+    h[STATE_Y] = hValue;
+    h[STATE_Z] = hValue;
+  }
+
   float measuredDistance = d->distance;
-
-  // The measurement is: z = sqrt(dx^2 + dy^2 + dz^2). The derivative dz/dX gives h.
-  h[STATE_X] = dx/predictedDistance;
-  h[STATE_Y] = dy/predictedDistance;
-  h[STATE_Z] = dz/predictedDistance;
-
   stateEstimatorScalarUpdate(&H, measuredDistance-predictedDistance, d->stdDev);
 }
 
@@ -1145,7 +1157,10 @@ static void stateEstimatorFinalize(sensorData_t *sensors)
   // Move attitude error into attitude if any of the angle errors are large enough
   if ((fabsf(v0) > 0.1e-3f || fabsf(v1) > 0.1e-3f || fabsf(v2) > 0.1e-3f) && (fabsf(v0) < 10 && fabsf(v1) < 10 && fabsf(v2) < 10))
   {
-    float angle = arm_sqrt(v0*v0 + v1*v1 + v2*v2);
+
+    float tmpValue = v0*v0 + v1*v1 + v2*v2;
+    ASSERT(tmpValue > 0);
+    float angle = arm_sqrt(tmpValue);
     float ca = arm_cos_f32(angle / 2.0f);
     float sa = arm_sin_f32(angle / 2.0f);
     float dq[4] = {ca, sa * v0 / angle, sa * v1 / angle, sa * v2 / angle};
