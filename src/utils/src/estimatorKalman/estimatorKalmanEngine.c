@@ -237,12 +237,12 @@ static bool enqueueData(xQueueHandle queue, const void* data) {
 
 static bool enqueueAcceleration(const estimatorKalmanStorage_t* storage, const Axis3f* acceleration) {
   DEBUG_KALMAN_ASSERT(storage->isInit);
-  return enqueueData(storage->positionDataQueue, (void*)acceleration);
+  return enqueueData(storage->accelerationDataQueue, (void*)acceleration);
 }
 
 static bool enqueueAngularVelocity(const estimatorKalmanStorage_t* storage, const Axis3f* angularVelocity) {
   DEBUG_KALMAN_ASSERT(storage->isInit);
-  return enqueueData(storage->distanceDataQueue, (void*)angularVelocity);
+  return enqueueData(storage->angularVelocityDataQueue, (void*)angularVelocity);
 }
 
 static bool enqueuePosition(const estimatorKalmanStorage_t* storage, const positionMeasurement_t* position) {
