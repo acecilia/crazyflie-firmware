@@ -93,6 +93,9 @@ VPATH_CF2 += vendor/libdw1000/src
 # libdict, a C library implementing dictionaries
 VPATH_CF2 += vendor/libdict/src
 
+# FIFO
+VPATH_CF2 += vendor/FIFO/src
+
 # vl53l1 driver
 VPATH_CF2 += $(LIB)/vl53l1/core/src
 
@@ -154,6 +157,9 @@ PROJ_OBJ_CF2 += dict.o sp_tree.o hb_tree.o tr_tree.o hashtable.o pr_tree.o tree_
 
 # libdict custom crazyflie helpers
 PROJ_OBJ_CF2 += libdict.o libdict_test_tools.o libdict_test.o
+
+# FIFO
+PROJ_OBJ_CF2 += FIFO.o
 
 # vl53l1 lib
 PROJ_OBJ_CF2 += vl53l1_api_core.o vl53l1_api.o vl53l1_core.o vl53l1_silicon_core.o vl53l1_api_strings.o
@@ -267,6 +273,7 @@ INCLUDES_CF2 += -Isrc/utils/interface/estimatorKalman
 INCLUDES_CF2 += -Isrc/deck/drivers/interface/TwrSwarm
 INCLUDES_CF2 += -Ivendor/libdw1000/inc
 INCLUDES_CF2 += -Ivendor/libdict/include
+INCLUDES_CF2 += -Ivendor/FIFO/src
 INCLUDES_CF2 += -I$(LIB)/FatFS
 INCLUDES_CF2 += -I$(LIB)/vl53l1
 INCLUDES_CF2 += -I$(LIB)/vl53l1/core/inc

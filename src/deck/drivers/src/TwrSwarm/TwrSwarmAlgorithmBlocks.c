@@ -82,6 +82,9 @@ static uint32_t ticksPerSecond = M2T(1000);
 
 /**********************************/
 
+void initEstimatorKalmanEngine() {
+  estimatorKalmanEngine.initializeEngine(xTaskGetTickCount, configTICK_RATE_HZ);
+}
 
 /**
  Count the number of elements inside the neighbours storage

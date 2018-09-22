@@ -3,6 +3,8 @@
 
 #include "TwrSwarmAlgorithm.h"
 
+void initEstimatorKalmanEngine(void);
+
 uint64_t createMask(const uint8_t numberOfOnes);
 
 uint32_t calculateRandomDelayToNextTx(uint32_t averageTxDelay);

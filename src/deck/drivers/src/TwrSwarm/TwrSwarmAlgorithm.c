@@ -81,6 +81,9 @@ static void timerCallback(xTimerHandle timer) {
 static void init(dwDevice_t *dev) {
   initRandomizationEngine(dev);
 
+  // initialize estimatorKalmanEngine
+  initEstimatorKalmanEngine();
+
   // Initialize neighbours storage
   for(unsigned int i = 0; i < NEIGHBOUR_STORAGE_CAPACITY; i++) {
     ctx.neighboursStorage[i].isInitialized = false;

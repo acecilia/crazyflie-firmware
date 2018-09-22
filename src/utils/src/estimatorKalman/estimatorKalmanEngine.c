@@ -1,18 +1,21 @@
 #include "estimatorKalmanEngine.h"
 
-#include "stm32f4xx.h"
-
-#include "FreeRTOS.h"
-#include "queue.h"
-#include "task.h"
-
-#include "param.h"
-
 #include "math.h"
 #include "arm_math.h"
 
 #include "cfassert.h"
-#include "string.h"
+
+/**
+ * Initialize engine
+ */
+
+static uint32_t (*getTickCount)(void);
+static uint32_t tickFrequency; // Ticks per second
+
+void initializeEngine(uint32_t (*getTickCountParameter)(void), uint32_t tickFrequencyParameter) {
+  getTickCount = getTickCountParameter;
+  tickFrequency = tickFrequencyParameter;
+}
 
 /**
  * Debug helpers
@@ -136,9 +139,11 @@ static float measNoiseGyro_yaw = 0.1f; // radians per second
 static inline void mat_trans(const arm_matrix_instance_f32 * pSrc, arm_matrix_instance_f32 * pDst) {
   DEBUG_KALMAN_ASSERT(ARM_MATH_SUCCESS == arm_mat_trans_f32(pSrc, pDst));
 }
+/* Unused function
 static inline void mat_inv(const arm_matrix_instance_f32 * pSrc, arm_matrix_instance_f32 * pDst) {
   DEBUG_KALMAN_ASSERT(ARM_MATH_SUCCESS == arm_mat_inverse_f32(pSrc, pDst));
 }
+*/
 static inline void mat_mult(const arm_matrix_instance_f32 * pSrcA, const arm_matrix_instance_f32 * pSrcB, arm_matrix_instance_f32 * pDst) {
   DEBUG_KALMAN_ASSERT(ARM_MATH_SUCCESS == arm_mat_mult_f32(pSrcA, pSrcB, pDst));
 }
@@ -209,75 +214,53 @@ static arm_matrix_instance_f32 tmpNN3m = {STATE_DIM, STATE_DIM, tmpNN3d};
 
 /*****************************************/
 
-/**
- * Queues to add data to the filter
- */
+static bool enqueueAcceleration(estimatorKalmanStorage_t* storage, const Axis3f* acceleration) {
+  DEBUG_KALMAN_ASSERT(storage->isInit);
+  fifo_add_despite_full(&storage->accelerationDataQueue, acceleration);
+  return true;}
 
-#define ACCELERATION_QUEUE_LENGTH (10)
-#define ANGULAR_VELOCITY_QUEUE_LENGTH (10)
-#define POSITION_QUEUE_LENGTH (10)
-#define DISTANCE_QUEUE_LENGTH (10)
-#define VELOCITY_QUEUE_LENGTH (10)
-
-static bool enqueueData(xQueueHandle queue, const void* data) {
-  portBASE_TYPE result;
-  bool isInInterrupt = (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
-
-  if (isInInterrupt) {
-    portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-    result = xQueueSendFromISR(queue, data, &xHigherPriorityTaskWoken);
-    if(xHigherPriorityTaskWoken == pdTRUE) {
-      portYIELD();
-    }
-  } else {
-    result = xQueueSend(queue, data, 0);
-  }
-  return (result == pdTRUE);
+static bool enqueueAngularVelocity(estimatorKalmanStorage_t* storage, const Axis3f* angularVelocity) {
+  DEBUG_KALMAN_ASSERT(storage->isInit);
+  fifo_add_despite_full(&storage->angularVelocityDataQueue, angularVelocity);
+  return true;
 }
 
-static bool enqueueAcceleration(const estimatorKalmanStorage_t* storage, const Axis3f* acceleration) {
+static bool enqueuePosition(estimatorKalmanStorage_t* storage, const positionMeasurement_t* position) {
   DEBUG_KALMAN_ASSERT(storage->isInit);
-  return enqueueData(storage->accelerationDataQueue, (void*)acceleration);
+  fifo_add_despite_full(&storage->positionDataQueue, position);
+  return true;
 }
 
-static bool enqueueAngularVelocity(const estimatorKalmanStorage_t* storage, const Axis3f* angularVelocity) {
+static bool enqueueDistance(estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance) {
   DEBUG_KALMAN_ASSERT(storage->isInit);
-  return enqueueData(storage->angularVelocityDataQueue, (void*)angularVelocity);
+  fifo_add_despite_full(&storage->distanceDataQueue, distance);
+  return true;
 }
 
-static bool enqueuePosition(const estimatorKalmanStorage_t* storage, const positionMeasurement_t* position) {
+static bool enqueueVelocity(estimatorKalmanStorage_t* storage, const measurement_t* velocity) {
   DEBUG_KALMAN_ASSERT(storage->isInit);
-  return enqueueData(storage->positionDataQueue, (void*)position);
-}
-
-static bool enqueueDistance(const estimatorKalmanStorage_t* storage, const distanceMeasurement_t* distance) {
-  DEBUG_KALMAN_ASSERT(storage->isInit);
-  return enqueueData(storage->distanceDataQueue, (void*)distance);
-}
-
-static bool enqueueVelocity(const estimatorKalmanStorage_t* storage, const measurement_t* velocity) {
-  DEBUG_KALMAN_ASSERT(storage->isInit);
-  return enqueueData(storage->velocityDataQueue, (void*)velocity);
+  fifo_add_despite_full(&storage->velocityDataQueue, velocity);
+  return true;
 }
 
 static inline bool hasAccelerationData(estimatorKalmanStorage_t* storage, Axis3f* acceleration) {
-  return (pdTRUE == xQueueReceive(storage->accelerationDataQueue, acceleration, 0));
+  return fifo_get(&storage->accelerationDataQueue, acceleration);
 }
 
 static inline bool hasAngularVelocityData(estimatorKalmanStorage_t* storage, Axis3f* angularVelocity) {
-  return (pdTRUE == xQueueReceive(storage->angularVelocityDataQueue, angularVelocity, 0));
+  return fifo_get(&storage->angularVelocityDataQueue, angularVelocity);
 }
 
 static inline bool hasPositionData(estimatorKalmanStorage_t* storage, positionMeasurement_t* position) {
-  return (pdTRUE == xQueueReceive(storage->positionDataQueue, position, 0));
+  return fifo_get(&storage->positionDataQueue, position);
 }
 
 static inline bool hasDistanceData(estimatorKalmanStorage_t* storage, distanceMeasurement_t* distance) {
-  return (pdTRUE == xQueueReceive(storage->distanceDataQueue, distance, 0));
+  return fifo_get(&storage->distanceDataQueue, distance);
 }
 
 static inline bool hasVelocityData(estimatorKalmanStorage_t* storage, measurement_t* velocity) {
-  return (pdTRUE == xQueueReceive(storage->velocityDataQueue, velocity, 0));
+  return fifo_get(&storage->velocityDataQueue, velocity);
 }
 
 /**
@@ -357,22 +340,14 @@ static void updateAttitudeQuaternion(estimatorKalmanStorage_t* storage, const fl
 /**
  * Main Kalman Filter functions
  */
-
 static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* initialPosition, const vec3Measurement_t* initialVelocity, const vec3Measurement_t* initialAttitudeError) {
-  // Reset the queues
-  if (!storage->isInit) {
-    storage->accelerationDataQueue = xQueueCreate(ACCELERATION_QUEUE_LENGTH, sizeof(Axis3f));
-    storage->angularVelocityDataQueue = xQueueCreate(ANGULAR_VELOCITY_QUEUE_LENGTH, sizeof(Axis3f));
-    storage->positionDataQueue = xQueueCreate(POSITION_QUEUE_LENGTH, sizeof(positionMeasurement_t));
-    storage->distanceDataQueue = xQueueCreate(DISTANCE_QUEUE_LENGTH, sizeof(distanceMeasurement_t));
-    storage->velocityDataQueue = xQueueCreate(VELOCITY_QUEUE_LENGTH, sizeof(measurement_t));
-  } else {
-    xQueueReset(storage->accelerationDataQueue);
-    xQueueReset(storage->angularVelocityDataQueue);
-    xQueueReset(storage->positionDataQueue);
-    xQueueReset(storage->distanceDataQueue);
-    xQueueReset(storage->velocityDataQueue);
-  }
+  DEBUG_KALMAN_ASSERT(!storage->isInit);
+
+  fifo_create_static(&storage->accelerationDataQueue, &storage->accelerationDataBuffer, ACCELERATION_QUEUE_LENGTH, sizeof(Axis3f));
+  fifo_create_static(&storage->angularVelocityDataQueue, &storage->angularVelocityDataBuffer, ANGULAR_VELOCITY_QUEUE_LENGTH, sizeof(Axis3f));
+  fifo_create_static(&storage->positionDataQueue, &storage->positionDataBuffer, POSITION_QUEUE_LENGTH, sizeof(positionMeasurement_t));
+  fifo_create_static(&storage->distanceDataQueue, &storage->distanceDataBuffer, DISTANCE_QUEUE_LENGTH, sizeof(distanceMeasurement_t));
+  fifo_create_static(&storage->velocityDataQueue, &storage->velocityDataBuffer, VELOCITY_QUEUE_LENGTH, sizeof(measurement_t));
 
   // Initialize the state
   // TODO: Can we initialize this more intelligently?
@@ -422,7 +397,7 @@ static void init(estimatorKalmanStorage_t* storage, const vec3Measurement_t* ini
   storage->Pm = (arm_matrix_instance_f32){ STATE_DIM, STATE_DIM, (float *)storage->P };
 
   // Initialize other variables of the storage
-  storage->lastUpdate = xTaskGetTickCount();
+  storage->lastUpdate = getTickCount();
   storage->isInit = true;
 
   ensureBoundedValuesAndSimmetryForCovarianceMatrix(storage);
@@ -824,8 +799,8 @@ static void update(estimatorKalmanStorage_t* storage, bool performPrediction) {
   decoupleState(storage, STATE_PY);
 #endif
 
-  uint32_t tick = xTaskGetTickCount(); // would be nice if this had a precision higher than 1ms...
-  float dt = (float)(tick - storage->lastUpdate) / configTICK_RATE_HZ;
+  uint32_t tick = getTickCount(); // would be nice if this had a precision higher than 1ms...
+  float dt = (float)(tick - storage->lastUpdate) / tickFrequency;
 
   // if dt == 0 means that the update function was called multiple times in the same ms: we do not have enough resolution on the clock to perform the prediction
   if(dt == 0) {
@@ -946,7 +921,7 @@ static void getPosition(const estimatorKalmanStorage_t* storage, point_t* positi
 static void getState(const estimatorKalmanStorage_t* storage, state_t *state) {
   DEBUG_KALMAN_ASSERT(storage->isInit);
 
-  uint32_t tick = xTaskGetTickCount();
+  uint32_t tick = getTickCount();
 
   // Position state is already in world frame
   state->position = (point_t){
@@ -999,6 +974,8 @@ const estimatorKalmanConstants_t estimatorKalmanConstants = {
 const estimatorKalmanEngine_t estimatorKalmanEngine = {
   .maximumAbsolutePosition = MAX_POSITION,
   .maximumAbsoluteVelocity = MAX_VELOCITY,
+
+  .initializeEngine = initializeEngine,
 
   .init = init,
   .update = update,

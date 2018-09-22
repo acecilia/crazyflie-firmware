@@ -26,6 +26,7 @@ compiler:
       - 'vendor/libdw1000/inc/'
       - 'vendor/libdict/include/'
       - 'vendor/libdict/src/'
+      - 'vendor/FIFO/src/'
       - 'src/deck/drivers/interface/'
       - 'src/deck/drivers/src/'
       - 'src/utils/interface/clockCorrection/'
