@@ -13,3 +13,7 @@
 [submodule "vendor/libdict"]
 	path = vendor/libdict
 	url = https://github.com/acecilia/libdict
+[submodule "vendor/FIFO"]
+	path = vendor/FIFO
+	url = https://acecilia@github.com/acecilia/FIFO.git
+	branch = fifo_add_despite_full
